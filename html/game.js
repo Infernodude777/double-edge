@@ -1,6 +1,6 @@
 // Double-Edge: Retro 2D Platformer
 // Modular ES6 classes, placeholder shapes, and comments for future sprite import
-// :skulk: this thing has so many features compared to mine. alright time to do stuff.
+
 // --- Sound Stub ---
 export function playSound(name) {
   // TODO: Insert .wav/.mp3 files later
@@ -44,6 +44,9 @@ class Player {
     this.facing = 'right'; // 'left' or 'right'
     this.jumps = 0; // double jump counter
     this.maxJumps = 2;
+    this.maxEnergy = 90; // 9 jumps, 3 double jumps (30 energy each)
+    this.energy = this.maxEnergy;
+    this.powerUpCooldown = 0;
   }
   update(input, platforms, hazards, enemies) {
     // Movement
@@ -57,16 +60,19 @@ class Player {
     } else {
       this.vx = 0;
     }
-    // Jump (double jump)
+    // Jump (energy-based)
     if ((input.isDown('ArrowUp') || input.isDown('KeyW'))) {
-      if (this.onGround && this.jumps === 0) {
+      if (this.onGround && this.jumps === 0 && this.energy >= 10) {
         this.vy = -(this.powerUp === 'speed' ? this.jumpPower * 1.3 : this.jumpPower);
         this.onGround = false;
         this.jumps = 1;
+        this.energy -= 10;
         playSound('jump');
-      } else if (!this.onGround && this.jumps < this.maxJumps && !this._jumpPressed) {
+      } else if (!this.onGround && this.jumps < this.maxJumps && !this._jumpPressed && this.energy >= 30) {
+        // Allow double jump if enough energy and not on ground
         this.vy = -(this.powerUp === 'speed' ? this.jumpPower * 1.3 : this.jumpPower);
         this.jumps++;
+        this.energy -= 30;
         playSound('jump');
       }
       this._jumpPressed = true;
@@ -82,7 +88,6 @@ class Player {
     // Platform collision and resolution
     for (let p of platforms) {
       if (this.collides(p)) {
-        // Resolve collision: move player out of platform
         let prevY = this.y - this.vy;
         let prevX = this.x - this.vx;
         // Vertical collision
@@ -90,7 +95,7 @@ class Player {
           this.y = p.y - this.height;
           this.vy = 0;
           this.onGround = true;
-          this.jumps = 0; // reset jumps on landing
+          this.jumps = 0;
         } else if (prevY >= p.y + p.height) {
           this.y = p.y + p.height;
           this.vy = 0;
@@ -104,7 +109,6 @@ class Player {
     // Hazard collision and resolution
     for (let h of hazards) {
       if (h.collides(this)) {
-        // Move player out of hazard
         if (this.x + this.width > h.x && this.x < h.x) this.x = h.x - this.width;
         else if (this.x < h.x + h.width && this.x > h.x) this.x = h.x + h.width;
         if (this.y + this.height > h.y && this.y < h.y) this.y = h.y - this.height;
@@ -114,15 +118,22 @@ class Player {
     // Enemy collision and resolution
     for (let e of enemies) {
       if (this.collides(e)) {
-        // Move player out of enemy
-        if (this.x + this.width > e.x && this.x < e.x) this.x = e.x - this.width;
-        else if (this.x < e.x + e.width && this.x > e.x) this.x = e.x + e.width;
-        if (this.y + this.height > e.y && this.y < e.y) this.y = e.y - this.height;
-        else if (this.y < e.y + e.height && this.y > e.y) this.y = e.y + e.height;
+        let prevX = this.x - this.vx;
+        if (prevX + this.width <= e.x) {
+          this.x = e.x - this.width;
+        } else if (prevX >= e.x + e.width) {
+          this.x = e.x + e.width;
+        }
+        let prevY = this.y - this.vy;
+        if (prevY + this.height <= e.y) {
+          this.y = e.y - this.height;
+          this.vy = 0;
+          this.onGround = true;
+          this.jumps = 0;
+        }
       }
     }
-    // --- Border collision ---
-    // Canvas size: 800x600
+    // Border collision
     if (this.x < 0) this.x = 0;
     if (this.x + this.width > 800) this.x = 800 - this.width;
     if (this.y < 0) {
@@ -187,12 +198,15 @@ class Player {
   }
   startPowerUp(type) {
     this.powerUp = type;
-    this.powerUpTimer = 600; // 10 seconds at 60fps
+    this.powerUpTimer = 1200; // 20 seconds at 60fps
+    this.powerUpCooldown = 1200; // 20 seconds cooldown
     if (type === 'shield') this.invincible = true;
     if (type === 'newWeapon') {
       const weapons = ['sword', 'axe', 'spear', 'bow'];
       this.weapon = weapons[randInt(0, weapons.length - 1)];
     }
+    // Restore energy on heart sacrifice
+    this.energy = this.maxEnergy;
     playSound('powerup');
   }
   endPowerUp() {
@@ -200,8 +214,10 @@ class Player {
     if (this.powerUp === 'newWeapon') this.weapon = 'sword';
     this.powerUp = null;
     this.powerUpTimer = 0;
+    // Cooldown remains until expired
   }
 }
+// --- End of Player class ---
 
 // --- Enemy Class ---
 class Enemy {
@@ -252,6 +268,8 @@ class Enemy {
     // Attack player
     if (this.collides(player)) {
       player.takeDamage(1);
+      // PowerUp cooldown tick
+      if (this.powerUpCooldown > 0) this.powerUpCooldown--;
     }
   }
   draw(ctx) {
@@ -269,7 +287,7 @@ class Enemy {
     if (!player.isAttacking) return false;
     let hitbox = { x: player.facing === 'right' ? player.x + player.width : player.x - 24, y: player.y + 12, width: player.weapon === 'sword' ? 16 : player.weapon === 'axe' ? 20 : player.weapon === 'spear' ? 24 : 16, height: player.weapon === 'sword' ? 24 : player.weapon === 'axe' ? 24 : player.weapon === 'spear' ? 8 : 8 };
     return this.x < hitbox.x + hitbox.width && this.x + this.width > hitbox.x &&
-           this.y < hitbox.y + hitbox.height && this.y + this.height > hitbox.y;
+      this.y < hitbox.y + hitbox.height && this.y + this.height > hitbox.y;
   }
   takeDamage(amount) {
     this.health -= amount;
@@ -280,6 +298,23 @@ class Enemy {
 }
 
 // --- Platform Class ---
+// --- Ladder Class ---
+class Ladder {
+  constructor(x, y, width, height) {
+    this.x = x; this.y = y;
+    this.width = width; this.height = height;
+  }
+  draw(ctx) {
+    ctx.save();
+    ctx.fillStyle = '#0ff';
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+    ctx.restore();
+  }
+  collides(obj) {
+    return obj.x + obj.width > this.x && obj.x < this.x + this.width &&
+           obj.y + obj.height > this.y && obj.y < this.y + this.height;
+  }
+}
 class Platform {
   constructor(x, y, width, height) {
     this.x = x; this.y = y;
@@ -322,6 +357,7 @@ class UI {
   constructor(player) {
     this.player = player;
     this.heartsDiv = document.getElementById('hearts');
+    this.energyDiv = document.getElementById('energybar');
     this.powerupDiv = document.getElementById('powerup');
   }
   update() {
@@ -331,11 +367,20 @@ class UI {
       heartsHTML += `<span style="color:${i < this.player.hearts ? '#f00' : '#444'};font-size:24px;">&#10084;</span> `;
     }
     this.heartsDiv.innerHTML = heartsHTML;
+    // Energy bar
+    let percent = Math.floor((this.player.energy / this.player.maxEnergy) * 100);
+    let gradient = this.player.powerUp ?
+      `linear-gradient(270deg, #ff0, #f0f, #0ff, #ff0)` :
+      `linear-gradient(90deg, #0ff 60%, #ff0 100%)`;
+    this.energyDiv.innerHTML = `<div id='energybar-inner' style='width:${percent}%;background:${gradient}'></div>`;
     // Powerup
     if (this.player.powerUp) {
       let name = this.player.powerUp;
       let time = Math.ceil(this.player.powerUpTimer / 60);
       this.powerupDiv.innerHTML = `Power-Up: <b>${name}</b> (${time}s)`;
+    } else if (this.player.powerUpCooldown > 0) {
+      let cd = Math.ceil(this.player.powerUpCooldown / 60);
+      this.powerupDiv.innerHTML = `Power-Up Cooldown: <b>${cd}s</b>`;
     } else {
       this.powerupDiv.innerHTML = '';
     }
@@ -404,12 +449,14 @@ class Game {
     const level = this.levels[levelIdx];
     this.platforms = level.platforms.map(p => new Platform(p.x, p.y, p.width, p.height));
     this.hazards = level.hazards.map(h => new Hazard(h.x, h.y, h.width, h.height));
+    this.ladders = level.ladders ? level.ladders.map(l => new Ladder(l.x, l.y, l.width, l.height)) : [];
     this.enemies = level.enemies.map(e => new Enemy(e.x, e.y));
     if (!this.player) {
       this.player = new Player(level.playerStart.x, level.playerStart.y);
       this.player.hearts = 5;
       this.player.maxHearts = 5;
       this.ui = new UI(this.player);
+      this.initFullscreen();
     } else {
       this.player.x = level.playerStart.x;
       this.player.y = level.playerStart.y;
@@ -421,9 +468,22 @@ class Game {
     this.levelComplete = false;
     this.gameOver = false;
   }
+  initFullscreen() {
+    const btn = document.getElementById('fullscreen-btn');
+    btn.addEventListener('click', () => {
+      const elem = document.documentElement;
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen();
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+      }
+    });
+  }
   initInput() {
     window.addEventListener('keydown', e => {
-      if ((e.code === 'KeyE') && this.player.hearts > 1 && !this.player.powerUp) {
+      if ((e.code === 'KeyE') && this.player.hearts > 1 && !this.player.powerUp && this.player.powerUpCooldown <= 0) {
         this.player.hearts--;
         let p = getRandomPowerUp();
         this.player.startPowerUp(p);
@@ -464,10 +524,10 @@ class Game {
     requestAnimationFrame(this.loop);
   }
   update() {
-  this.player.update(this.input, this.platforms, this.hazards, this.enemies);
+    this.player.update(this.input, this.platforms, this.hazards, this.enemies, this.ladders);
     let killedThisFrame = 0;
     for (let enemy of this.enemies) {
-      enemy.update(this.player, this.platforms);
+      enemy.update(this.player, this.platforms, this.ladders);
       // Player attack (directional)
       if (enemy.attackedBy(this.player)) {
         let dmg = this.player.powerUp === 'damage' ? 2 : 1;
@@ -517,6 +577,8 @@ class Game {
     for (let p of this.platforms) p.draw(this.ctx);
     // Hazards
     for (let h of this.hazards) h.draw(this.ctx);
+    // Ladders
+    for (let l of this.ladders || []) l.draw(this.ctx);
     // Enemies
     for (let e of this.enemies) e.draw(this.ctx);
     // Player
