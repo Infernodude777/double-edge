@@ -1,8 +1,9 @@
-[gd_scene load_steps=7 format=4 uid="uid://dwuwo2ywgv23h"]
+[gd_scene load_steps=10 format=4 uid="uid://dwuwo2ywgv23h"]
 
 [ext_resource type="Texture2D" uid="uid://six1a37fpd6r" path="res://Screenshot 2025-09-27 at 12.30.14 PM.png" id="1_0xm2m"]
 [ext_resource type="Script" uid="uid://djingm0hwn5kp" path="res://player.gd" id="2_1bvp3"]
 [ext_resource type="Texture2D" uid="uid://dbo8ffkx7jsbd" path="res://icon.svg" id="2_h2yge"]
+[ext_resource type="Texture2D" uid="uid://dwrj7b4xyvaqk" path="res://Screenshot 2025-09-27 at 3.04.59 PM.png" id="4_1bvp3"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_1bvp3"]
 texture = ExtResource("1_0xm2m")
@@ -64,6 +65,23 @@ sources/0 = SubResource("TileSetAtlasSource_1bvp3")
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_7mycd"]
 size = Vector2(128, 128)
 
+[sub_resource type="GDScript" id="GDScript_lquwl"]
+script/source = "extends CollisionShape2D
+
+
+# Called when the node enters the scene tree for the first time.
+func _ready() -> void:
+	pass # Replace with function body.
+
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+func _process(delta: float) -> void:
+	pass
+"
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_lquwl"]
+size = Vector2(157, 130)
+
 [node name="Node2D" type="Node2D"]
 
 [node name="TileMapLayer" type="TileMapLayer" parent="."]
@@ -86,3 +104,21 @@ shape = SubResource("RectangleShape2D_7mycd")
 [node name="Sprite2D" type="Sprite2D" parent="Player"]
 position = Vector2(-65, 1)
 texture = ExtResource("2_h2yge")
+
+[node name="Mob" type="RigidBody2D" parent="."]
+visible = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Mob"]
+script = SubResource("GDScript_lquwl")
+
+[node name="Enemy1" type="CharacterBody2D" parent="."]
+position = Vector2(295, 56)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Enemy1"]
+position = Vector2(232.5, -65)
+shape = SubResource("RectangleShape2D_lquwl")
+
+[node name="Sprite2D" type="Sprite2D" parent="Enemy1"]
+position = Vector2(230, -65.99999)
+scale = Vector2(3.4772727, 2.7173913)
+texture = ExtResource("4_1bvp3")
