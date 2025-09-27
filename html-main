@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=800, initial-scale=1.0">
+  <title>Double-Edge - Main</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="ui">
+      <div id="hearts"></div>
+      <div id="powerup"></div>
+      <div id="prompt">Press E to sacrifice a heart for a power-up</div>
+    </div>
+  </div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>
