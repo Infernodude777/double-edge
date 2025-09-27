@@ -17,6 +17,29 @@ body {
   background: #111;
   padding: 16px;
 }
+#fullscreen-btn {
+  background: #0ff;
+  color: #222;
+  border: 2px solid #fff;
+  border-radius: 4px;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 0 8px #0ff;
+}
+#cooldown-bottom {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100vw;
+  text-align: center;
+  font-size: 20px;
+  color: #ff0;
+  background: rgba(34,34,34,0.8);
+  padding: 8px 0;
+  z-index: 100;
+  font-family: 'Press Start 2P', monospace, cursive;
+  letter-spacing: 2px;
+}
 #gameCanvas {
   display: block;
   background: #333;
@@ -28,6 +51,19 @@ body {
   color: #fff;
   font-size: 18px;
   text-align: center;
+}
+#energybar {
+  width: 160px;
+  height: 16px;
+  background: #222;
+  border: 2px solid #0ff;
+  margin: 0 auto 4px auto;
+  position: relative;
+}
+#energybar-inner {
+  height: 100%;
+  background: linear-gradient(90deg, #0ff 60%, #ff0 100%);
+  transition: width 0.2s;
 }
 #hearts {
   margin-bottom: 4px;
