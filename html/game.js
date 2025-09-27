@@ -25,7 +25,8 @@ class Input {
 // --- Player Class ---
 class Player {
   constructor(x, y) {
-    this.x = x; this.y = y;
+  this.x = x; this.y = y;
+  this._attackHit = false;
     this.vx = 0; this.vy = 0;
     this.width = 32; this.height = 48;
     this.color = '#0ff';
@@ -46,7 +47,9 @@ class Player {
     this.maxJumps = 2;
     this.maxEnergy = 90; // 9 jumps, 3 double jumps (30 energy each)
     this.energy = this.maxEnergy;
-    this.powerUpCooldown = 0;
+  this.powerUpCooldown = 0;
+  this.maxAmmo = 10;
+  this.ammo = this.maxAmmo;
   }
   update(input, platforms, hazards, enemies) {
     // Movement
@@ -146,13 +149,29 @@ class Player {
       this.onGround = true;
     }
     // Attack
-    if (input.isDown('Space') && !this.isAttacking && this.attackCooldown <= 0) {
+    if (input.isDown('Space') && !this.isAttacking && this.attackCooldown <= 0 && this.ammo > 0) {
       this.isAttacking = true;
-      this.attackCooldown = 20;
+  this.attackCooldown = 35; // ~0.58s at 60fps
+      this.attackAnimFrames = 30; // 0.5s at 60fps
+      this.ammo--;
+      this._attackHit = false;
       playSound('attack');
     }
     if (this.attackCooldown > 0) this.attackCooldown--;
-    if (this.attackCooldown === 0) this.isAttacking = false;
+    if (this.attackAnimFrames > 0) this.attackAnimFrames--;
+    if (this.attackCooldown === 0) {
+      this.isAttacking = false;
+      this._attackHit = false;
+    }
+    // Ammo regeneration
+    if (this.ammo < this.maxAmmo) {
+      if (!this._ammoRegenTimer) this._ammoRegenTimer = 0;
+      this._ammoRegenTimer++;
+      if (this._ammoRegenTimer >= 120) { // 2s per ammo
+        this.ammo++;
+        this._ammoRegenTimer = 0;
+      }
+    }
     // Power-up timer
     if (this.powerUp && this.powerUpTimer > 0) {
       this.powerUpTimer--;
@@ -171,12 +190,12 @@ class Player {
     }
     // Weapon placeholder
     ctx.fillStyle = '#fff';
-    if (this.isAttacking) {
+  if (this.attackAnimFrames > 0) {
       let offsetX = this.facing === 'right' ? this.x + this.width : this.x - 16;
       let offsetAxe = this.facing === 'right' ? this.x + this.width : this.x - 20;
       let offsetSpear = this.facing === 'right' ? this.x + this.width : this.x - 24;
       let offsetBow = this.facing === 'right' ? this.x + this.width : this.x - 16;
-      if (this.weapon === 'sword') ctx.fillRect(offsetX, this.y + 16, 16, 8);
+  if (this.weapon === 'sword') ctx.fillRect(offsetX, this.y + 16, 32, 8); // wider sword
       if (this.weapon === 'axe') ctx.fillRect(offsetAxe, this.y + 12, 20, 12);
       if (this.weapon === 'spear') ctx.fillRect(offsetSpear, this.y + 20, 24, 4);
       if (this.weapon === 'bow') ctx.fillRect(offsetBow, this.y + 24, 16, 4);
@@ -222,7 +241,8 @@ class Player {
 // --- Enemy Class ---
 class Enemy {
   constructor(x, y) {
-    this.x = x; this.y = y;
+  this.x = x; this.y = y;
+  this.attackAnimFrames = 0;
     this.width = 32; this.height = 32;
     this.color = '#f00';
     this.vx = 1.5;
@@ -231,8 +251,13 @@ class Enemy {
     this.knockback = 0;
     this.jumpCooldown = randInt(60, 180); // frames until next jump
     this.onGround = false;
+    this.stunned = 0;
   }
-  update(player, platforms) {
+  update(player, platforms, ladders) {
+    if (this.stunned > 0) {
+      this.stunned--;
+      return;
+    }
     if (this.knockback > 0) {
       this.x += 4;
       this.knockback--;
@@ -276,6 +301,30 @@ class Enemy {
     ctx.save();
     ctx.fillStyle = this.color;
     ctx.fillRect(this.x, this.y, this.width, this.height);
+    // Health bar
+    let barWidth = this.width;
+    let percent = Math.max(0, this.health / 3);
+    ctx.fillStyle = '#222';
+    ctx.fillRect(this.x, this.y - 10, barWidth, 6);
+    ctx.fillStyle = percent > 0.5 ? '#0f0' : percent > 0.2 ? '#ff0' : '#f00';
+    ctx.fillRect(this.x, this.y - 10, barWidth * percent, 6);
+    ctx.strokeStyle = '#fff';
+    ctx.strokeRect(this.x, this.y - 10, barWidth, 6);
+    // Sparkles if stunned
+    if (this.stunned > 0) {
+      for (let i = 0; i < 8; i++) {
+        let angle = (Math.PI * 2 * i) / 8;
+        let sx = this.x + this.width / 2 + Math.cos(angle) * 18;
+        let sy = this.y + this.height / 2 + Math.sin(angle) * 18;
+        ctx.save();
+        ctx.globalAlpha = 0.7 * (this.stunned / 30);
+        ctx.fillStyle = ['#fff', '#ff0', '#0ff', '#f0f'][i % 4];
+        ctx.beginPath();
+        ctx.arc(sx, sy, 3 + Math.random() * 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
     ctx.restore();
   }
   collides(obj) {
@@ -285,7 +334,12 @@ class Enemy {
   attackedBy(player) {
     // Attack hitbox based on facing
     if (!player.isAttacking) return false;
-    let hitbox = { x: player.facing === 'right' ? player.x + player.width : player.x - 24, y: player.y + 12, width: player.weapon === 'sword' ? 16 : player.weapon === 'axe' ? 20 : player.weapon === 'spear' ? 24 : 16, height: player.weapon === 'sword' ? 24 : player.weapon === 'axe' ? 24 : player.weapon === 'spear' ? 8 : 8 };
+    let hitbox = {
+      x: player.facing === 'right' ? player.x + player.width : player.x - 40,
+      y: player.y + 12,
+      width: player.weapon === 'sword' ? 32 : player.weapon === 'axe' ? 20 : player.weapon === 'spear' ? 24 : 16,
+      height: player.weapon === 'sword' ? 24 : player.weapon === 'axe' ? 24 : player.weapon === 'spear' ? 8 : 8
+    };
     return this.x < hitbox.x + hitbox.width && this.x + this.width > hitbox.x &&
       this.y < hitbox.y + hitbox.height && this.y + this.height > hitbox.y;
   }
@@ -295,6 +349,101 @@ class Enemy {
     playSound('enemyHurt');
   }
   isDead() { return this.health <= 0; }
+}
+// --- Boss Enemy Class ---
+class BossEnemy extends Enemy {
+  constructor(x, y) {
+    super(x, y);
+    this.width = 80;
+    this.height = 80;
+    this.color = '#f0f';
+    this.health = 30;
+    this.spawnCooldown = 120; // frames
+  }
+  update(player, platforms, ladders, game) {
+    if (this.stunned > 0) {
+      this.stunned--;
+      return;
+    }
+    // Boss moves slower but is bigger
+    if (player.x < this.x) this.x -= 1;
+    else if (player.x > this.x) this.x += 1;
+    // Gravity
+    this.vy += 0.5;
+    this.y += this.vy;
+    this.onGround = false;
+    for (let p of platforms) {
+      if (this.collides(p)) {
+        if (this.vy > 0 && this.y + this.height - this.vy <= p.y) {
+          this.y = p.y - this.height;
+          this.vy = 0;
+          this.onGround = true;
+        }
+      }
+    }
+    // Attack player
+    if (this.collides(player)) {
+      player.takeDamage(3);
+    }
+    // Spawn weak enemies
+    if (this.spawnCooldown > 0) {
+      this.spawnCooldown--;
+    } else {
+      if (game && Math.random() < 0.5) { // 50% chance every cooldown
+        let spawnX = this.x + randInt(-40, 120);
+        // Find nearest platform below spawnX
+        let bestPlatform = null;
+        let minDist = Infinity;
+        for (let p of platforms) {
+          if (spawnX >= p.x && spawnX <= p.x + p.width) {
+            let dist = Math.abs((this.y + this.height) - p.y);
+            if (dist < minDist) {
+              minDist = dist;
+              bestPlatform = p;
+            }
+          }
+        }
+        let spawnY;
+        if (bestPlatform) {
+          spawnY = bestPlatform.y - 32; // enemy height
+        } else {
+          spawnY = this.y + this.height; // fallback
+        }
+        game.enemies.push(new Enemy(spawnX, spawnY));
+      }
+      this.spawnCooldown = randInt(90, 180); // 1.5-3s
+    }
+  }
+  draw(ctx) {
+    ctx.save();
+    ctx.fillStyle = this.color;
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+    // Health bar
+    let barWidth = this.width;
+    let percent = Math.max(0, this.health / 30);
+    ctx.fillStyle = '#222';
+    ctx.fillRect(this.x, this.y - 14, barWidth, 10);
+    ctx.fillStyle = percent > 0.5 ? '#0f0' : percent > 0.2 ? '#ff0' : '#f00';
+    ctx.fillRect(this.x, this.y - 14, barWidth * percent, 10);
+    ctx.strokeStyle = '#fff';
+    ctx.strokeRect(this.x, this.y - 14, barWidth, 10);
+    // Sparkles if stunned
+    if (this.stunned > 0) {
+      for (let i = 0; i < 16; i++) {
+        let angle = (Math.PI * 2 * i) / 16;
+        let sx = this.x + this.width / 2 + Math.cos(angle) * 40;
+        let sy = this.y + this.height / 2 + Math.sin(angle) * 40;
+        ctx.save();
+        ctx.globalAlpha = 0.7 * (this.stunned / 30);
+        ctx.fillStyle = ['#fff', '#ff0', '#0ff', '#f0f'][i % 4];
+        ctx.beginPath();
+        ctx.arc(sx, sy, 5 + Math.random() * 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
 }
 
 // --- Platform Class ---
@@ -346,6 +495,52 @@ class Hazard {
   }
 }
 
+// --- Shockwave Effect ---
+class Shockwave {
+  constructor(x, y, radius, duration = 30) {
+    this.x = x;
+    this.y = y;
+    this.radius = radius;
+    this.duration = duration;
+    this.frame = 0;
+  }
+  draw(ctx) {
+    if (this.frame < this.duration) {
+      ctx.save();
+      ctx.globalAlpha = 0.5 * (1 - this.frame / this.duration);
+      let grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius + this.frame * 2);
+      grad.addColorStop(0, '#fff');
+      grad.addColorStop(0.3, '#0ff');
+      grad.addColorStop(0.7, '#f0f');
+      grad.addColorStop(1, 'transparent');
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius + this.frame * 2, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.restore();
+      // Sparkles
+      for (let i = 0; i < 12; i++) {
+        let angle = (Math.PI * 2 * i) / 12;
+        let sx = this.x + Math.cos(angle) * (this.radius + this.frame * 2);
+        let sy = this.y + Math.sin(angle) * (this.radius + this.frame * 2);
+        ctx.save();
+        ctx.globalAlpha = 0.7 * (1 - this.frame / this.duration);
+        ctx.fillStyle = ['#fff', '#ff0', '#0ff', '#f0f'][i % 4];
+        ctx.beginPath();
+        ctx.arc(sx, sy, 3 + Math.random() * 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+  update() {
+    this.frame++;
+  }
+  isDone() {
+    return this.frame >= this.duration;
+  }
+}
+
 // --- PowerUp System ---
 const POWERUPS = ['damage', 'speed', 'shield', 'shockwave', 'newWeapon'];
 function getRandomPowerUp() {
@@ -373,6 +568,17 @@ class UI {
       `linear-gradient(270deg, #ff0, #f0f, #0ff, #ff0)` :
       `linear-gradient(90deg, #0ff 60%, #ff0 100%)`;
     this.energyDiv.innerHTML = `<div id='energybar-inner' style='width:${percent}%;background:${gradient}'></div>`;
+    // Ammo bar
+    let ammoPercent = Math.floor((this.player.ammo / this.player.maxAmmo) * 100);
+    let ammoGradient = `linear-gradient(90deg, #fff 60%, #f00 100%)`;
+    if (!document.getElementById('ammobar')) {
+      let bar = document.createElement('div');
+      bar.id = 'ammobar';
+      bar.style.height = '6px';
+      bar.style.marginBottom = '2px';
+      this.energyDiv.parentNode.insertBefore(bar, this.energyDiv.nextSibling);
+    }
+    document.getElementById('ammobar').innerHTML = `<div id='ammobar-inner' style='width:${ammoPercent}%;background:${ammoGradient};height:100%;'></div>`;
     // Powerup
     if (this.player.powerUp) {
       let name = this.player.powerUp;
@@ -430,7 +636,24 @@ class Game {
           new Enemy(350, 280)
         ],
         playerStart: { x: 50, y: 500 }
-      }
+    },
+        // Level 3: Boss Level
+        {
+          platforms: [
+            new Platform(0, 550, 800, 50),
+            new Platform(200, 400, 120, 20),
+            new Platform(500, 300, 120, 20),
+            new Platform(350, 200, 200, 20)
+          ],
+          hazards: [
+            new Hazard(400, 530, 40, 20),
+            new Hazard(600, 530, 40, 20)
+          ],
+          enemies: [
+            { boss: true, x: 600, y: 470 }
+          ],
+          playerStart: { x: 100, y: 500 }
+        }
     ];
     this.currentLevel = 0;
     this.loadLevel(this.currentLevel);
@@ -442,6 +665,7 @@ class Game {
     this.loadUnlocks();
     this.loop = this.loop.bind(this);
     this.initInput();
+    this.shockwaves = [];
     requestAnimationFrame(this.loop);
   }
 
@@ -450,7 +674,7 @@ class Game {
     this.platforms = level.platforms.map(p => new Platform(p.x, p.y, p.width, p.height));
     this.hazards = level.hazards.map(h => new Hazard(h.x, h.y, h.width, h.height));
     this.ladders = level.ladders ? level.ladders.map(l => new Ladder(l.x, l.y, l.width, l.height)) : [];
-    this.enemies = level.enemies.map(e => new Enemy(e.x, e.y));
+  this.enemies = level.enemies.map(e => e.boss ? new BossEnemy(e.x, e.y) : new Enemy(e.x, e.y));
     if (!this.player) {
       this.player = new Player(level.playerStart.x, level.playerStart.y);
       this.player.hearts = 5;
@@ -488,8 +712,13 @@ class Game {
         let p = getRandomPowerUp();
         this.player.startPowerUp(p);
         if (p === 'shockwave') {
+          // Add visible shockwave effect
+          this.shockwaves.push(new Shockwave(this.player.x + this.player.width / 2, this.player.y + this.player.height / 2, 60, 30));
           for (let enemy of this.enemies) {
-            if (Math.abs(enemy.x - this.player.x) < 80) enemy.takeDamage(2);
+            if (Math.abs(enemy.x - this.player.x) < 80) {
+              enemy.takeDamage(2);
+              enemy.stunned = 30; // 0.5 seconds at 60fps
+            }
           }
         }
       }
@@ -497,11 +726,15 @@ class Game {
         this.paused = !this.paused;
       }
       if (e.code === 'KeyN' && this.levelComplete && this.currentLevel < this.levels.length - 1) {
-        this.currentLevel++;
-        this.loadLevel(this.currentLevel);
-        this.levelComplete = false;
-        this.gameOver = false;
-        requestAnimationFrame(this.loop);
+  this.currentLevel++;
+  // Gain 1 heart to both max and current health
+  this.player.maxHearts++;
+  this.player.hearts = this.player.maxHearts; // Fully restore health
+  this.player.ammo = this.player.maxAmmo; // Fully restore ammo
+  this.loadLevel(this.currentLevel);
+  this.levelComplete = false;
+  this.gameOver = false;
+  requestAnimationFrame(this.loop);
       }
     });
   }
@@ -527,11 +760,29 @@ class Game {
     this.player.update(this.input, this.platforms, this.hazards, this.enemies, this.ladders);
     let killedThisFrame = 0;
     for (let enemy of this.enemies) {
-      enemy.update(this.player, this.platforms, this.ladders);
+      if (enemy instanceof BossEnemy) {
+        enemy.update(this.player, this.platforms, this.ladders, this);
+      } else {
+        enemy.update(this.player, this.platforms, this.ladders);
+      }
       // Player attack (directional)
-      if (enemy.attackedBy(this.player)) {
+      if (enemy.attackedBy(this.player) && !this.player._attackHit) {
         let dmg = this.player.powerUp === 'damage' ? 2 : 1;
         enemy.takeDamage(dmg);
+        this.player._attackHit = true;
+        // Knockback player unless touching wall
+        let touchingWall = false;
+        for (let p of this.platforms) {
+          if (this.player.x <= p.x || this.player.x + this.player.width >= p.x + p.width) {
+            touchingWall = true;
+            break;
+          }
+        }
+        if (!touchingWall) {
+          // Fling player back
+          let kb = this.player.facing === 'right' ? -8 : 8;
+          this.player.vx = kb;
+        }
       }
       if (enemy.isDead()) {
         killedThisFrame++;
@@ -557,6 +808,11 @@ class Game {
         this.player.takeDamage(1);
       }
     }
+    // Update shockwaves
+    this.shockwaves = this.shockwaves.filter(sw => {
+      sw.update();
+      return !sw.isDone();
+    });
     // Level complete condition
     if (this.enemies.length === 0) {
       this.levelComplete = true;
@@ -573,6 +829,8 @@ class Game {
     // Background
     this.ctx.fillStyle = '#222';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    // Shockwaves
+    for (let sw of this.shockwaves) sw.draw(this.ctx);
     // Platforms
     for (let p of this.platforms) p.draw(this.ctx);
     // Hazards
