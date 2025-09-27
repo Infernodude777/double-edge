@@ -25,8 +25,8 @@ class Input {
 // --- Player Class ---
 class Player {
   constructor(x, y) {
-  this.x = x; this.y = y;
-  this._attackHit = false;
+    this.x = x; this.y = y;
+    this._attackHit = false;
     this.vx = 0; this.vy = 0;
     this.width = 32; this.height = 48;
     this.color = '#0ff';
@@ -47,9 +47,15 @@ class Player {
     this.maxJumps = 2;
     this.maxEnergy = 90; // 9 jumps, 3 double jumps (30 energy each)
     this.energy = this.maxEnergy;
-  this.powerUpCooldown = 0;
-  this.maxAmmo = 10;
-  this.ammo = this.maxAmmo;
+    this.powerUpCooldown = 0;
+    this.maxAmmo = 10;
+    this.ammo = this.maxAmmo;
+    // Sprite animation for idle sword
+    this.idleFrame = 0;
+    this.idleFrameCounter = 0;
+    this.idleImages = [new Image(), new Image()];
+    this.idleImages[0].src = '0.png';
+    this.idleImages[1].src = '1.png';
   }
   update(input, platforms, hazards, enemies) {
     // Movement
@@ -179,26 +185,42 @@ class Player {
     }
   }
   draw(ctx) {
-    // Placeholder: draw rectangle
     ctx.save();
-    ctx.fillStyle = this.color;
-    ctx.fillRect(this.x, this.y, this.width, this.height);
+    // Idle sword animation: only if not moving and using sword
+    if (this.weapon === 'sword' && this.vx === 0 && this.vy === 0 && !this.isAttacking) {
+      this.idleFrameCounter++;
+      if (this.idleFrameCounter > 12) { // Change frame every 12 frames (~0.2s at 60fps)
+        this.idleFrame = (this.idleFrame + 1) % 2;
+        this.idleFrameCounter = 0;
+      }
+      ctx.drawImage(this.idleImages[this.idleFrame], this.x, this.y, this.width, this.height);
+    } else {
+      // Placeholder: draw rectangle
+      ctx.fillStyle = this.color;
+      ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
     // Cosmetic effect
     if (this.cosmetic === 'glow') {
       ctx.shadowColor = '#ff0';
       ctx.shadowBlur = 16;
     }
     // Weapon placeholder
-    ctx.fillStyle = '#fff';
-  if (this.attackAnimFrames > 0) {
-      let offsetX = this.facing === 'right' ? this.x + this.width : this.x - 16;
-      let offsetAxe = this.facing === 'right' ? this.x + this.width : this.x - 20;
-      let offsetSpear = this.facing === 'right' ? this.x + this.width : this.x - 24;
-      let offsetBow = this.facing === 'right' ? this.x + this.width : this.x - 16;
-  if (this.weapon === 'sword') ctx.fillRect(offsetX, this.y + 16, 32, 8); // wider sword
-      if (this.weapon === 'axe') ctx.fillRect(offsetAxe, this.y + 12, 20, 12);
-      if (this.weapon === 'spear') ctx.fillRect(offsetSpear, this.y + 20, 24, 4);
-      if (this.weapon === 'bow') ctx.fillRect(offsetBow, this.y + 24, 16, 4);
+    if (this.attackAnimFrames > 0) {
+      if (this.weapon === 'scythe') {
+        ctx.fillStyle = '#fff';
+        let offsetScythe = this.facing === 'right' ? this.x + this.width : this.x - 72;
+        ctx.fillRect(offsetScythe, this.y + 4, 72, 16); // much wider and taller
+      } else {
+        ctx.fillStyle = '#fff';
+        let offsetX = this.facing === 'right' ? this.x + this.width : this.x - 16;
+        let offsetAxe = this.facing === 'right' ? this.x + this.width : this.x - 20;
+        let offsetSpear = this.facing === 'right' ? this.x + this.width : this.x - 24;
+        let offsetBow = this.facing === 'right' ? this.x + this.width : this.x - 16;
+        if (this.weapon === 'sword') ctx.fillRect(offsetX, this.y + 16, 32, 8);
+        if (this.weapon === 'axe') ctx.fillRect(offsetAxe, this.y + 12, 20, 12);
+        if (this.weapon === 'spear') ctx.fillRect(offsetSpear, this.y + 20, 24, 4);
+        if (this.weapon === 'bow') ctx.fillRect(offsetBow, this.y + 24, 16, 4);
+      }
     }
     ctx.restore();
   }
@@ -335,10 +357,10 @@ class Enemy {
     // Attack hitbox based on facing
     if (!player.isAttacking) return false;
     let hitbox = {
-      x: player.facing === 'right' ? player.x + player.width : player.x - 40,
-      y: player.y + 12,
-      width: player.weapon === 'sword' ? 32 : player.weapon === 'axe' ? 20 : player.weapon === 'spear' ? 24 : 16,
-      height: player.weapon === 'sword' ? 24 : player.weapon === 'axe' ? 24 : player.weapon === 'spear' ? 8 : 8
+      x: player.facing === 'right' ? player.x + player.width : player.x - (player.weapon === 'scythe' ? 72 : 40),
+      y: player.weapon === 'scythe' ? player.y + 4 : player.y + 12,
+      width: player.weapon === 'scythe' ? 72 : player.weapon === 'sword' ? 32 : player.weapon === 'axe' ? 20 : player.weapon === 'spear' ? 24 : 16,
+      height: player.weapon === 'scythe' ? 32 : player.weapon === 'sword' ? 24 : player.weapon === 'axe' ? 24 : player.weapon === 'spear' ? 8 : 8
     };
     return this.x < hitbox.x + hitbox.width && this.x + this.width > hitbox.x &&
       this.y < hitbox.y + hitbox.height && this.y + this.height > hitbox.y;
@@ -707,7 +729,7 @@ class Game {
   }
   initInput() {
     window.addEventListener('keydown', e => {
-      if ((e.code === 'KeyE') && this.player.hearts > 1 && !this.player.powerUp && this.player.powerUpCooldown <= 0) {
+      if ((e.code === 'KeyE') && this.player.hearts > 1 && this.player.powerUpCooldown <= 0) {
         this.player.hearts--;
         let p = getRandomPowerUp();
         this.player.startPowerUp(p);
