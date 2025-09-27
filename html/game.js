@@ -1,6 +1,6 @@
 // Double-Edge: Retro 2D Platformer
 // Modular ES6 classes, placeholder shapes, and comments for future sprite import
-
+// :skulk: this thing has so many features compared to mine. alright time to do stuff.
 // --- Sound Stub ---
 export function playSound(name) {
   // TODO: Insert .wav/.mp3 files later
