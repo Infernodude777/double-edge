@@ -10,11 +10,14 @@
   <div id="game-container">
     <canvas id="gameCanvas" width="800" height="600"></canvas>
     <div id="ui">
-      <div id="hearts"></div>
-      <div id="powerup"></div>
+  <div id="hearts"></div>
+  <div id="energybar" style="height:16px;margin-bottom:4px;"></div>
+  <div id="powerup"></div>
       <div id="prompt">Press E to sacrifice a heart for a power-up</div>
     </div>
   </div>
+    <button id="fullscreen-btn" style="margin-top:12px;font-size:16px;">Fullscreen</button>
+    <div id="cooldown-bottom"></div>
   <script type="module" src="game.js"></script>
 </body>
 </html>
