@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=800, initial-scale=1.0">
+  <title>Double-Edge - Main</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="ui">
+  <div id="hearts"></div>
+  <div id="energybar" style="height:16px;margin-bottom:4px;"></div>
+  <div id="powerup"></div>
+      <div id="prompt">Press E to sacrifice a heart for a power-up</div>
+    </div>
+  </div>
+    <button id="fullscreen-btn">Fullscreen</button>
+    <div id="cooldown-bottom"></div>
+    <div id="weapon-selector" style="position:fixed;top:0;right:0;width:200px;height:auto;background:#181818e0;color:#fff;z-index:1000;padding:16px;box-shadow:-2px 0 8px #000;">
+      <button id="reset-btn" style="width:100%;margin-bottom:16px;padding:10px 0;font-size:24px;font-family:'Press Start 2P','Courier New',monospace;background:linear-gradient(90deg,#f0f,#0ff);color:#fff;border:none;border-radius:8px;box-shadow:0 2px 8px #f0f;letter-spacing:2px;cursor:pointer;transition:transform 0.1s;outline:none;image-rendering:pixelated;-webkit-font-smoothing:none;-moz-osx-font-smoothing:grayscale;">
+        &#x21bb; RESET GAME
+      </button>
+      <h3 style="margin-top:0;font-family:'Press Start 2P','Courier New',monospace;font-size:24px;image-rendering:pixelated;-webkit-font-smoothing:none;-moz-osx-font-smoothing:grayscale;">Weapon Select</h3>
+      <div id="weapon-container"></div>
+    </div>
+  <script type="module" src="game.js"></script>
+  <script type="module">
+    const weapons = [
+      { name: 'Sword', id: 'sword', description: 'Default balanced weapon' },
+      { name: 'Scythe', id: 'scythe', description: 'More range, more damage, slower cooldown' },
+      { name: 'Spellcaster', id: 'spellcaster', description: 'Cast spells: Fireball, Ice Ball, Heal' },
+      { name: 'Bow', id: 'bow', description: 'Charge and aim for ranged precision damage' }
+    ];
+    
+    let weaponContainer = document.getElementById('weapon-container');
+    
+    function renderWeaponSelector() {
+      if (!window.game || !window.game.player) {
+        weaponContainer.innerHTML = '<p style="font-size:18px;color:#888;font-family:\'Press Start 2P\',\'Courier New\',monospace;image-rendering:pixelated;-webkit-font-smoothing:none;">Game loading...</p>';
+        return;
+      }
+      
+      const currentWeapon = window.game.player.weapon;
+      weaponContainer.innerHTML = '';
+      
+      weapons.forEach((weapon, i) => {
+        const isSelected = currentWeapon === weapon.id;
+        const weaponDiv = document.createElement('div');
+        weaponDiv.style.cssText = `
+          margin:8px 0;
+          padding:8px;
+          border-radius:6px;
+          cursor:pointer;
+          border:2px solid ${isSelected ? '#f0f' : '#444'};
+          background:${isSelected ? '#222' : 'transparent'};
+          ${isSelected ? 'box-shadow:0 0 8px #f0f;' : ''}
+        `;
+        
+        weaponDiv.innerHTML = `
+          <b style="font-family:'Press Start 2P','Courier New',monospace;font-size:20px;image-rendering:pixelated;-webkit-font-smoothing:none;-moz-osx-font-smoothing:grayscale;">${weapon.name}</b> ${isSelected ? '<span style="color:#f0f;float:right;font-family:\'Press Start 2P\',\'Courier New\',monospace;font-size:16px;image-rendering:pixelated;-webkit-font-smoothing:none;">ACTIVE</span>' : ''}<br>
+          <span style="font-size:14px;color:#ccc;font-family:'Press Start 2P','Courier New',monospace;image-rendering:pixelated;-webkit-font-smoothing:none;-moz-osx-font-smoothing:grayscale;">${weapon.description}</span>
+        `;
+        
+        weaponDiv.onclick = () => {
+          if (window.game && window.game.player) {
+            window.game.player.weapon = weapon.id;
+            renderWeaponSelector();
+          }
+        };
+        
+        weaponContainer.appendChild(weaponDiv);
+      });
+    }
+    
+    // Reset button logic
+    window.addEventListener('DOMContentLoaded', () => {
+      const resetBtn = document.getElementById('reset-btn');
+      if (resetBtn) {
+        resetBtn.onmouseenter = () => { resetBtn.style.transform = 'scale(1.07)'; };
+        resetBtn.onmouseleave = () => { resetBtn.style.transform = 'scale(1)'; };
+        resetBtn.onclick = () => {
+          if (window.game && window.game.reset) {
+            window.game.reset();
+          } else {
+            location.reload();
+          }
+        };
+      }
+      renderWeaponSelector();
+    });
+    
+    // Update weapon selector periodically
+    setInterval(() => {
+      renderWeaponSelector();
+    }, 500);
+  </script>
+</body>
+</html>

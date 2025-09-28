@@ -1,0 +1,175 @@
+body {
+  background: #181818 url('assets/ui/bg.png') repeat;
+  font-family: 'Press Start 2P', 'Courier New', 'Monaco', 'Consolas', monospace;
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* CRT scanlines effect */
+  position: relative;
+  /* Force bitmap font rendering */
+  -webkit-font-feature-settings: "liga" 0;
+  font-feature-settings: "liga" 0;
+  font-variant-ligatures: none;
+}
+/* Ensure all buttons, inputs, and text elements use pixel art font */
+button, input, textarea, select, h1, h2, h3, h4, h5, h6, p, div, span {
+  font-family: 'Press Start 2P', 'Courier New', 'Monaco', 'Consolas', monospace;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  image-rendering: -webkit-crisp-edges;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  font-smooth: never;
+  -webkit-text-stroke: 0;
+  text-shadow: none !important;
+}
+body::after {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255,255,255,0.03) 0px,
+    rgba(255,255,255,0.03) 1px,
+    transparent 2px,
+    transparent 4px
+  );
+  z-index: 9999;
+}
+#game-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 8px solid #0ff;
+  box-shadow: 0 0 32px #0ff, 0 0 8px #fff inset, 0 0 64px #f0f;
+  background: linear-gradient(135deg, #222 60%, #333 100%);
+  padding: 16px;
+  border-radius: 12px;
+}
+#fullscreen-btn {
+  background: #0ff;
+  color: #222;
+  border: 2px solid #fff;
+  border-radius: 4px;
+  font-family: 'Press Start 2P', 'Courier New', 'Monaco', 'Consolas', monospace;
+  cursor: pointer;
+  box-shadow: 0 0 8px #0ff;
+  font-size: 16px;
+  letter-spacing: 2px;
+  margin-top: 12px;
+  padding: 12px 24px;
+  image-rendering: pixelated;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+}
+#cooldown-bottom {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100vw;
+  text-align: center;
+  font-size: 32px;
+  color: #ff0;
+  background: rgba(34,34,34,0.8);
+  padding: 8px 0;
+  z-index: 100;
+  font-family: 'Press Start 2P', 'Courier New', 'Monaco', 'Consolas', monospace;
+  letter-spacing: 4px;
+  text-shadow: 0 0 8px #ff0, 0 0 4px #fff;
+  image-rendering: pixelated;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+}
+#gameCanvas {
+  display: block;
+  background: #222;
+  image-rendering: pixelated;
+  border: 4px solid #ff0;
+  box-shadow: 0 0 24px #0ff, 0 0 8px #ff0 inset;
+}
+#ui {
+  margin-top: 8px;
+  color: #fff;
+  font-size: 24px;
+  text-align: center;
+  text-shadow: 0 0 8px #0ff, 0 0 4px #fff;
+  font-family: 'Press Start 2P', 'Courier New', 'Monaco', 'Consolas', monospace;
+  image-rendering: pixelated;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+}
+#energybar {
+  width: 160px;
+  height: 16px;
+  background: #222;
+  border: 2px solid #0ff;
+  margin: 0 auto 4px auto;
+  position: relative;
+  box-shadow: 0 0 8px #0ff;
+}
+#energybar-inner {
+  height: 100%;
+  background: linear-gradient(90deg, #0ff 60%, #ff0 100%);
+  transition: width 0.2s;
+}
+#hearts {
+  margin-bottom: 4px;
+  text-shadow: 0 0 8px #f00, 0 0 4px #fff;
+  font-family: 'Press Start 2P', 'Courier New', 'Monaco', 'Consolas', monospace;
+  font-size: 32px;
+  image-rendering: pixelated;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+}
+#powerup {
+  margin-bottom: 4px;
+  color: #ff0;
+  text-shadow: 0 0 8px #ff0, 0 0 4px #fff;
+  font-family: 'Press Start 2P', 'Courier New', 'Monaco', 'Consolas', monospace;
+  font-size: 20px;
+  image-rendering: pixelated;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+}
+#prompt {
+  color: #0ff;
+  font-size: 18px;
+  text-shadow: 0 0 4px #fff;
+  font-family: 'Press Start 2P', 'Courier New', 'Monaco', 'Consolas', monospace;
+  image-rendering: pixelated;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Weapon selector extreme pixelation */
+#weapon-selector {
+  image-rendering: pixelated;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  transform-origin: top right;
+}
+
+#weapon-selector * {
+  image-rendering: pixelated !important;
+  -webkit-font-smoothing: none !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  font-smooth: never !important;
+  text-rendering: geometricPrecision !important;
+}
+
+/* Make weapon selector text extra chunky and pixelated */
+#weapon-selector h3 {
+  transform: scale(1.2);
+  transform-origin: center;
+}
+
+#weapon-selector button {
+  transform: scale(1.1);
+  transform-origin: center;
+}
