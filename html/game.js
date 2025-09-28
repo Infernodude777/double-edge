@@ -30,10 +30,12 @@ class Player {
     this.vx = 0; this.vy = 0;
     this.width = 32; this.height = 48;
     this.color = '#0ff';
-    this.maxHearts = 5;
-    this.hearts = 5;
+    this.maxHearts = 5; // Default for level 1, will be updated by loadLevel
+    this.hearts = 5; // Default for level 1, will be updated by loadLevel
     this.isAttacking = false;
     this.attackCooldown = 0;
+    this.attackMomentum = 0; // For forward momentum when hitting enemies
+    this.attackMomentumTimer = 0;
     this.powerUp = null;
     this.powerUpTimer = 0;
     this.weapon = 'sword';
@@ -45,32 +47,235 @@ class Player {
     this.facing = 'right'; // 'left' or 'right'
     this.jumps = 0; // double jump counter
     this.maxJumps = 2;
-    this.maxEnergy = 90; // 9 jumps, 3 double jumps (30 energy each)
+    this.maxEnergy = 180; // 18 jumps, 6 double jumps (30 energy each) - 2x the original
     this.energy = this.maxEnergy;
     this.powerUpCooldown = 0;
     this.maxAmmo = 10;
     this.ammo = this.maxAmmo;
-    // Sprite animation for idle sword
+    this.healingStun = 0; // For healing spell - makes player stationary
+    this.spellCooldown = 0; // Cooldown for spellcaster abilities (0.5s = 30 frames)
+    
+    // Casting system
+    this.isCasting = false;
+    this.castingTimer = 0;
+    this.castingSpell = null; // 'fireball', 'iceShard', or 'healingWave'
+    this.castingDuration = 30; // 0.5 seconds at 60 FPS
+    
+    // Bow system
+    this.isChargingBow = false;
+    this.bowChargeTime = 0;
+    this.maxBowCharge = 120; // 2 seconds at 60 FPS
+    this.bowAimHeight = 0; // -1 to 1, affects trajectory angle
+    this.maxAimHeight = 1; // Maximum aim adjustment
+    
+    // Sprite animation for idle
     this.idleFrame = 0;
     this.idleFrameCounter = 0;
     this.idleImages = [new Image(), new Image()];
-    this.idleImages[0].src = '0.png';
-    this.idleImages[1].src = '1.png';
+    this.idleImages[0].src = 'assets/player/Normal Idle/0.png';
+    this.idleImages[1].src = 'assets/player/Normal Idle/1.png';
+    // Sprite animation for jumping
+    this.jumpFrame = 0;
+    this.jumpFrameCounter = 0;
+    this.jumpImages = [new Image(), new Image(), new Image(), new Image()];
+    this.jumpImages[0].src = 'assets/player/Normal Jump/daydream_assets-10.png.png';
+    this.jumpImages[1].src = 'assets/player/Normal Jump/daydream_assets-11.png.png';
+    this.jumpImages[2].src = 'assets/player/Normal Jump/daydream_assets-12.png.png';
+    this.jumpImages[3].src = 'assets/player/Normal Jump/daydream_assets-13.png.png';
+    // Sprite animation for normal running
+    this.runFrame = 0;
+    this.runFrameCounter = 0;
+    this.runImages = [new Image(), new Image(), new Image(), new Image(), new Image(), new Image()];
+    this.runImages[0].src = 'assets/player/Normal Run/daydream_assets-4.png.png';
+    this.runImages[1].src = 'assets/player/Normal Run/daydream_assets-5.png.png';
+    this.runImages[2].src = 'assets/player/Normal Run/daydream_assets-6.png.png';
+    this.runImages[3].src = 'assets/player/Normal Run/daydream_assets-7.png.png';
+    this.runImages[4].src = 'assets/player/Normal Run/daydream_assets-8.png.png';
+    this.runImages[5].src = 'assets/player/Normal Run/daydream_assets-9.png.png';
+    
+    // Sprite animation for normal attack
+    this.attackFrame = 0;
+    this.attackFrameCounter = 0;
+    this.attackImages = [new Image(), new Image(), new Image()];
+    this.attackImages[0].src = 'assets/player/Normal Attack/0.png';
+    this.attackImages[1].src = 'assets/player/Normal Attack/1.png';
+    this.attackImages[2].src = 'assets/player/Normal Attack/2.png';
+    
+    // Sprite animation for scythe idle
+    this.scytheIdleFrame = 0;
+    this.scytheIdleFrameCounter = 0;
+    this.scytheIdleImages = [new Image(), new Image(), new Image(), new Image()];
+    this.scytheIdleImages[0].src = 'assets/player/Scythe Idle/0.png';
+    this.scytheIdleImages[1].src = 'assets/player/Scythe Idle/1.png';
+    this.scytheIdleImages[2].src = 'assets/player/Scythe Idle/2.png';
+    this.scytheIdleImages[3].src = 'assets/player/Scythe Idle/3.png';
+    // Sprite animation for scythe run (used when jumping with scythe)
+    this.scytheRunFrame = 0;
+    this.scytheRunFrameCounter = 0;
+    this.scytheRunImages = [new Image(), new Image(), new Image(), new Image()];
+    this.scytheRunImages[0].src = 'assets/player/Scythe Run/0.png';
+    this.scytheRunImages[1].src = 'assets/player/Scythe Run/1.png';
+    this.scytheRunImages[2].src = 'assets/player/Scythe Run/2.png';
+    this.scytheRunImages[3].src = 'assets/player/Scythe Run/3.png';
+    
+    // Sprite animation for scythe jump
+    this.scytheJumpFrame = 0;
+    this.scytheJumpFrameCounter = 0;
+    this.scytheJumpImages = [new Image(), new Image(), new Image(), new Image()];
+    this.scytheJumpImages[0].src = 'assets/player/Scythe Jump/0.png';
+    this.scytheJumpImages[1].src = 'assets/player/Scythe Jump/1.png';
+    this.scytheJumpImages[2].src = 'assets/player/Scythe Jump/2.png';
+    this.scytheJumpImages[3].src = 'assets/player/Scythe Jump/3.png';
+    
+    // Sprite animation for shockwave idle (spellcaster weapon)
+    this.shockwaveIdleFrame = 0;
+    this.shockwaveIdleFrameCounter = 0;
+    this.shockwaveIdleImages = [new Image(), new Image(), new Image(), new Image()];
+    this.shockwaveIdleImages[0].src = 'assets/player/Shockwave Idle/0.png';
+    this.shockwaveIdleImages[1].src = 'assets/player/Shockwave Idle/1.png';
+    this.shockwaveIdleImages[2].src = 'assets/player/Shockwave Idle/2.png';
+    this.shockwaveIdleImages[3].src = 'assets/player/Shockwave Idle/3.png';
+    
+    // Sprite animation for shockwave run (spellcaster weapon)
+    this.shockwaveRunFrame = 0;
+    this.shockwaveRunFrameCounter = 0;
+    this.shockwaveRunImages = [new Image(), new Image(), new Image(), new Image()];
+    this.shockwaveRunImages[0].src = 'assets/player/Shockwave Run/0.png';
+    this.shockwaveRunImages[1].src = 'assets/player/Shockwave Run/1.png';
+    this.shockwaveRunImages[2].src = 'assets/player/Shockwave Run/2.png';
+    this.shockwaveRunImages[3].src = 'assets/player/Shockwave Run/3.png';
+    
+    // Sprite animation for shockwave jump (spellcaster weapon)
+    this.shockwaveJumpFrame = 0;
+    this.shockwaveJumpFrameCounter = 0;
+    this.shockwaveJumpImages = [new Image(), new Image(), new Image(), new Image()];
+    this.shockwaveJumpImages[0].src = 'assets/player/Shockwave Jump/0.png';
+    this.shockwaveJumpImages[1].src = 'assets/player/Shockwave Jump/1.png';
+    this.shockwaveJumpImages[2].src = 'assets/player/Shockwave Jump/2.png';
+    this.shockwaveJumpImages[3].src = 'assets/player/Shockwave Jump/3.png';
+    
+    // Sprite animation for bow idle
+    this.bowIdleFrame = 0;
+    this.bowIdleFrameCounter = 0;
+    this.bowIdleImages = [new Image(), new Image()];
+    this.bowIdleImages[0].src = 'assets/player/Bow Idle/0.png';
+    this.bowIdleImages[1].src = 'assets/player/Bow Idle/1.png';
+    
+    // Sprite animation for bow run
+    this.bowRunFrame = 0;
+    this.bowRunFrameCounter = 0;
+    this.bowRunImages = [new Image(), new Image(), new Image(), new Image(), new Image(), new Image()];
+    this.bowRunImages[0].src = 'assets/player/Bow Run/0.png';
+    this.bowRunImages[1].src = 'assets/player/Bow Run/1.png';
+    this.bowRunImages[2].src = 'assets/player/Bow Run/2.png';
+    this.bowRunImages[3].src = 'assets/player/Bow Run/3.png';
+    this.bowRunImages[4].src = 'assets/player/Bow Run/4.png';
+    this.bowRunImages[5].src = 'assets/player/Bow Run/5.png';
+    
+    // Sprite animation for bow jump
+    this.bowJumpFrame = 0;
+    this.bowJumpFrameCounter = 0;
+    this.bowJumpImages = [new Image(), new Image(), new Image(), new Image()];
+    this.bowJumpImages[0].src = 'assets/player/Bow Jump/0.png';
+    this.bowJumpImages[1].src = 'assets/player/Bow Jump/1.png';
+    this.bowJumpImages[2].src = 'assets/player/Bow Jump/2.png';
+    this.bowJumpImages[3].src = 'assets/player/Bow Jump/3.png';
   }
-  update(input, platforms, hazards, enemies) {
-    // Movement
-    let moveSpeed = this.powerUp === 'speed' ? this.speed * 1.7 : this.speed;
-    if (input.isDown('ArrowLeft') || input.isDown('KeyA')) {
-      this.vx = -moveSpeed;
-      this.facing = 'left';
-    } else if (input.isDown('ArrowRight') || input.isDown('KeyD')) {
-      this.vx = moveSpeed;
-      this.facing = 'right';
-    } else {
-      this.vx = 0;
+  
+  findNearestPlatformBelow(platforms) {
+    let nearestPlatform = null;
+    let nearestDistance = Infinity;
+    
+    for (let platform of platforms) {
+      // Check if platform is below player and within horizontal bounds
+      if (platform.y > this.y + this.height && 
+          platform.x < this.x + this.width && 
+          platform.x + platform.width > this.x) {
+        let distance = platform.y - (this.y + this.height);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestPlatform = platform;
+        }
+      }
     }
-    // Jump (energy-based)
-    if ((input.isDown('ArrowUp') || input.isDown('KeyW'))) {
+    
+    return nearestPlatform;
+  }
+  
+  releaseSpell(game) {
+    if (!this.castingSpell) return null;
+    
+    let spellX = this.x + this.width / 2;
+    let spellY = this.y + this.height / 2;
+    let spell = null;
+    let spellType = this.castingSpell;
+    
+    switch (spellType) {
+      case 'fireball':
+        spell = new Fireball(spellX, spellY, this.facing);
+        break;
+        
+      case 'iceShard':
+        spell = new IceShard(spellX, spellY, this.facing);
+        break;
+        
+      case 'healingWave':
+        spell = new HealingWave(spellX, spellY);
+        this.healingStun = 60; // 1 second of being stationary
+        break;
+    }
+    
+    this.castingSpell = null;
+    return { spell: spell, type: spellType };
+  }
+  
+  createArrow() {
+    if (!this.releaseArrow) return null;
+    
+    let arrowX = this.x + this.width / 2;
+    let arrowY = this.y + this.height / 2;
+    let chargePercent = Math.min(this.bowChargeTime / this.maxBowCharge, 1.0);
+    
+    let arrow = new Arrow(arrowX, arrowY, this.facing, chargePercent, this.bowAimHeight);
+    
+    this.releaseArrow = false;
+    this.bowChargeTime = 0;
+    return arrow;
+  }
+  
+  update(input, platforms, hazards, enemies) {
+    // Update healing stun
+    if (this.healingStun > 0) {
+      this.healingStun--;
+    }
+    
+    // Movement (disabled during healing, casting, and slowed while bow charging)
+    let moveSpeed = this.powerUp === 'speed' ? this.speed * 1.7 : this.speed;
+    if (this.isChargingBow) {
+      moveSpeed *= 0.3; // Move 30% speed while charging bow
+    }
+    
+    if (this.healingStun <= 0 && !this.isCasting) {
+      if (input.isDown('ArrowLeft') || input.isDown('KeyA')) {
+        this.vx = -moveSpeed;
+        this.facing = 'left';
+      } else if (input.isDown('ArrowRight') || input.isDown('KeyD')) {
+        this.vx = moveSpeed;
+        this.facing = 'right';
+      } else {
+        this.vx = 0;
+      }
+      
+      // Apply attack momentum if active
+      if (this.attackMomentumTimer > 0) {
+        this.vx = this.attackMomentum;
+        this.attackMomentumTimer--;
+      }
+    } else {
+      this.vx = 0; // Can't move while healing or casting
+    }
+    // Jump (energy-based, disabled while casting or bow charging)
+    if ((input.isDown('ArrowUp') || input.isDown('KeyW')) && !this.isCasting && !this.isChargingBow) {
       if (this.onGround && this.jumps === 0 && this.energy >= 10) {
         this.vy = -(this.powerUp === 'speed' ? this.jumpPower * 1.3 : this.jumpPower);
         this.onGround = false;
@@ -154,15 +359,49 @@ class Player {
       this.vy = 0;
       this.onGround = true;
     }
-    // Attack
-    if (input.isDown('Space') && !this.isAttacking && this.attackCooldown <= 0 && this.ammo > 0) {
-      this.isAttacking = true;
-  this.attackCooldown = 35; // ~0.58s at 60fps
-      this.attackAnimFrames = 30; // 0.5s at 60fps
-      this.ammo--;
-      this._attackHit = false;
-      playSound('attack');
+    // Attack / Bow Charging
+    if (this.weapon === 'bow') {
+      // Bow charging system
+      if (input.isDown('Space') && !this.isChargingBow && this.attackCooldown <= 0 && this.ammo > 0) {
+        this.isChargingBow = true;
+        this.bowChargeTime = 0;
+      }
+      
+      if (this.isChargingBow) {
+        if (input.isDown('Space') && this.bowChargeTime < this.maxBowCharge) {
+          this.bowChargeTime++;
+        } else {
+          // Release arrow
+          this.releaseArrow = true;
+          this.isChargingBow = false;
+          this.attackCooldown = 35;
+          this.ammo--;
+          playSound('attack');
+        }
+      }
+    } else {
+      // Normal weapon attack
+      if (input.isDown('Space') && !this.isAttacking && this.attackCooldown <= 0 && this.ammo > 0) {
+        this.isAttacking = true;
+        this.attackCooldown = 35; // ~0.58s at 60fps
+        this.attackAnimFrames = 30; // 0.5s at 60fps
+        this.ammo--;
+        this._attackHit = false;
+        playSound('attack');
+      }
     }
+    
+    // Bow aiming (F key for height adjustment)
+    if (this.weapon === 'bow') {
+      if (input.isDown('KeyF') && !this._aimPressed) {
+        this.bowAimHeight += 0.2;
+        if (this.bowAimHeight > this.maxAimHeight) this.bowAimHeight = -this.maxAimHeight;
+        this._aimPressed = true;
+      } else if (!input.isDown('KeyF')) {
+        this._aimPressed = false;
+      }
+    }
+    
     if (this.attackCooldown > 0) this.attackCooldown--;
     if (this.attackAnimFrames > 0) this.attackAnimFrames--;
     if (this.attackCooldown === 0) {
@@ -183,21 +422,339 @@ class Player {
       this.powerUpTimer--;
       if (this.powerUpTimer === 0) this.endPowerUp();
     }
+    // Power-up cooldown decrement
+    if (this.powerUpCooldown > 0) {
+      this.powerUpCooldown--;
+    }
+    // Spell cooldown decrement
+    if (this.spellCooldown > 0) {
+      this.spellCooldown--;
+    }
+    
+    // Handle casting system
+    if (this.isCasting) {
+      this.castingTimer++;
+      
+      // Ground attraction - move quickly towards nearest platform below
+      let nearestPlatform = this.findNearestPlatformBelow(platforms);
+      if (nearestPlatform) {
+        let targetY = nearestPlatform.y - this.height;
+        let distanceToGround = targetY - this.y;
+        
+        if (distanceToGround > 5) {
+          // Move quickly towards ground (faster than normal gravity)
+          this.vy = Math.min(this.vy + 2, 15); // Accelerated downward movement
+        } else {
+          // Snap to ground and stop vertical movement
+          this.y = targetY;
+          this.vy = 0;
+          this.onGround = true;
+        }
+      }
+      
+      // Stop horizontal movement while casting
+      this.vx = 0;
+      
+      // Check if casting is complete
+      if (this.castingTimer >= this.castingDuration) {
+        this.completeCasting = true; // Flag to trigger spell release after this frame
+        this.isCasting = false;
+        this.castingTimer = 0;
+      }
+    }
   }
   draw(ctx) {
     ctx.save();
-    // Idle sword animation: only if not moving and using sword
-    if (this.weapon === 'sword' && this.vx === 0 && this.vy === 0 && !this.isAttacking) {
-      this.idleFrameCounter++;
-      if (this.idleFrameCounter > 12) { // Change frame every 12 frames (~0.2s at 60fps)
-        this.idleFrame = (this.idleFrame + 1) % 2;
+    let img;
+    
+    // Determine which animation to use based on weapon and state
+    if (this.weapon === 'scythe') {
+      if (!this.onGround) {
+        // Use scythe jump animation when jumping with scythe
+        this.scytheJumpFrameCounter++;
+        if (this.scytheJumpFrameCounter > 12) { // Change frame every 12 frames (0.2s at 60fps)
+          this.scytheJumpFrame = (this.scytheJumpFrame + 1) % 4;
+          this.scytheJumpFrameCounter = 0;
+        }
+        img = this.scytheJumpImages[this.scytheJumpFrame];
+        // Reset other animations
+        this.scytheIdleFrameCounter = 0;
+        this.scytheIdleFrame = 0;
+        this.scytheRunFrameCounter = 0;
+        this.scytheRunFrame = 0;
         this.idleFrameCounter = 0;
+        this.jumpFrameCounter = 0;
+        this.shockwaveIdleFrameCounter = 0;
+        this.shockwaveRunFrameCounter = 0;
+        this.shockwaveJumpFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+        this.bowIdleFrameCounter = 0;
+        this.bowRunFrameCounter = 0;
+        this.bowJumpFrameCounter = 0;
+      } else if (this.vx === 0 && this.onGround && !this.isAttacking) {
+        // Use scythe idle animation when standing still with scythe
+        this.scytheIdleFrameCounter++;
+        if (this.scytheIdleFrameCounter > 20) { // Change frame every 20 frames
+          this.scytheIdleFrame = (this.scytheIdleFrame + 1) % 4;
+          this.scytheIdleFrameCounter = 0;
+        }
+        img = this.scytheIdleImages[this.scytheIdleFrame];
+        // Reset other animations
+        this.scytheRunFrameCounter = 0;
+        this.scytheRunFrame = 0;
+        this.scytheJumpFrameCounter = 0;
+        this.scytheJumpFrame = 0;
+        this.idleFrameCounter = 0;
+        this.jumpFrameCounter = 0;
+        this.shockwaveIdleFrameCounter = 0;
+        this.shockwaveRunFrameCounter = 0;
+        this.shockwaveJumpFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+        this.bowIdleFrameCounter = 0;
+        this.bowRunFrameCounter = 0;
+        this.bowJumpFrameCounter = 0;
+      } else {
+        // Use scythe run animation when moving/running with scythe
+        this.scytheRunFrameCounter++;
+        if (this.scytheRunFrameCounter > 10) { // Change frame every 10 frames for running animation
+          this.scytheRunFrame = (this.scytheRunFrame + 1) % 4;
+          this.scytheRunFrameCounter = 0;
+        }
+        img = this.scytheRunImages[this.scytheRunFrame];
+        // Reset other animations
+        this.scytheIdleFrameCounter = 0;
+        this.scytheIdleFrame = 0;
+        this.scytheJumpFrameCounter = 0;
+        this.scytheJumpFrame = 0;
+        this.idleFrameCounter = 0;
+        this.jumpFrameCounter = 0;
+        this.shockwaveIdleFrameCounter = 0;
+        this.shockwaveRunFrameCounter = 0;
+        this.shockwaveJumpFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+        this.bowIdleFrameCounter = 0;
+        this.bowRunFrameCounter = 0;
+        this.bowJumpFrameCounter = 0;
       }
-      ctx.drawImage(this.idleImages[this.idleFrame], this.x, this.y, this.width, this.height);
+    } else if (this.weapon === 'spellcaster') {
+      // Spellcaster weapon uses shockwave animations
+      if (!this.onGround) {
+        // Use shockwave jump animation when jumping with spellcaster
+        this.shockwaveJumpFrameCounter++;
+        if (this.shockwaveJumpFrameCounter > 12) { // Change frame every 12 frames (0.2s at 60fps)
+          this.shockwaveJumpFrame = (this.shockwaveJumpFrame + 1) % 4;
+          this.shockwaveJumpFrameCounter = 0;
+        }
+        img = this.shockwaveJumpImages[this.shockwaveJumpFrame];
+        // Reset other animations
+        this.shockwaveIdleFrameCounter = 0;
+        this.shockwaveIdleFrame = 0;
+        this.shockwaveRunFrameCounter = 0;
+        this.shockwaveRunFrame = 0;
+        this.idleFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+        this.bowIdleFrameCounter = 0;
+        this.bowRunFrameCounter = 0;
+        this.bowJumpFrameCounter = 0;
+      } else if (this.vx === 0 && this.onGround && !this.isAttacking) {
+        // Use shockwave idle animation when standing still with spellcaster
+        this.shockwaveIdleFrameCounter++;
+        if (this.shockwaveIdleFrameCounter > 12) { // Change frame every 12 frames (0.2s at 60fps)
+          this.shockwaveIdleFrame = (this.shockwaveIdleFrame + 1) % 4;
+          this.shockwaveIdleFrameCounter = 0;
+        }
+        img = this.shockwaveIdleImages[this.shockwaveIdleFrame];
+        // Reset other animations
+        this.shockwaveRunFrameCounter = 0;
+        this.shockwaveRunFrame = 0;
+        this.shockwaveJumpFrameCounter = 0;
+        this.idleFrameCounter = 0;
+        this.jumpFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+        this.bowIdleFrameCounter = 0;
+        this.bowRunFrameCounter = 0;
+        this.bowJumpFrameCounter = 0;
+      } else {
+        // Use shockwave run animation when moving/running with spellcaster
+        this.shockwaveRunFrameCounter++;
+        if (this.shockwaveRunFrameCounter > 12) { // Change frame every 12 frames (0.2s at 60fps)
+          this.shockwaveRunFrame = (this.shockwaveRunFrame + 1) % 4;
+          this.shockwaveRunFrameCounter = 0;
+        }
+        img = this.shockwaveRunImages[this.shockwaveRunFrame];
+        // Reset other animations
+        this.shockwaveIdleFrameCounter = 0;
+        this.shockwaveIdleFrame = 0;
+        this.shockwaveJumpFrameCounter = 0;
+        this.idleFrameCounter = 0;
+        this.jumpFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+        this.bowIdleFrameCounter = 0;
+        this.bowRunFrameCounter = 0;
+        this.bowJumpFrameCounter = 0;
+      }
+    } else if (this.weapon === 'bow') {
+      // Bow weapon uses bow animations
+      if (!this.onGround) {
+        // Use bow jump animation when jumping with bow
+        this.bowJumpFrameCounter++;
+        if (this.bowJumpFrameCounter > 12) { // Change frame every 12 frames (0.2s at 60fps)
+          this.bowJumpFrame = (this.bowJumpFrame + 1) % 4;
+          this.bowJumpFrameCounter = 0;
+        }
+        img = this.bowJumpImages[this.bowJumpFrame];
+        // Reset other animations
+        this.bowIdleFrameCounter = 0;
+        this.bowIdleFrame = 0;
+        this.bowRunFrameCounter = 0;
+        this.bowRunFrame = 0;
+        this.idleFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+        this.scytheIdleFrameCounter = 0;
+        this.scytheRunFrameCounter = 0;
+        this.scytheJumpFrameCounter = 0;
+      } else if (this.vx === 0 && this.onGround && !this.isAttacking) {
+        // Use bow idle animation when standing still with bow
+        this.bowIdleFrameCounter++;
+        if (this.bowIdleFrameCounter > 12) { // Change frame every 12 frames (0.2s at 60fps)
+          this.bowIdleFrame = (this.bowIdleFrame + 1) % 2;
+          this.bowIdleFrameCounter = 0;
+        }
+        img = this.bowIdleImages[this.bowIdleFrame];
+        // Reset other animations
+        this.bowRunFrameCounter = 0;
+        this.bowRunFrame = 0;
+        this.bowJumpFrameCounter = 0;
+        this.idleFrameCounter = 0;
+        this.jumpFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+        this.scytheIdleFrameCounter = 0;
+        this.scytheRunFrameCounter = 0;
+        this.scytheJumpFrameCounter = 0;
+      } else {
+        // Use bow run animation when moving/running with bow
+        this.bowRunFrameCounter++;
+        if (this.bowRunFrameCounter > 12) { // Change frame every 12 frames (0.2s at 60fps)
+          this.bowRunFrame = (this.bowRunFrame + 1) % 6;
+          this.bowRunFrameCounter = 0;
+        }
+        img = this.bowRunImages[this.bowRunFrame];
+        // Reset other animations
+        this.bowIdleFrameCounter = 0;
+        this.bowIdleFrame = 0;
+        this.bowJumpFrameCounter = 0;
+        this.idleFrameCounter = 0;
+        this.jumpFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+      }
     } else {
-      // Placeholder: draw rectangle
-      ctx.fillStyle = this.color;
-      ctx.fillRect(this.x, this.y, this.width, this.height);
+      // Normal weapon animations (sword, bow, etc.)
+      if (this.isAttacking) {
+        // Use normal attack animation when attacking
+        this.attackFrameCounter++;
+        if (this.attackFrameCounter > 12) { // Change frame every 12 frames (0.2s at 60fps)
+          this.attackFrame = (this.attackFrame + 1) % 3;
+          this.attackFrameCounter = 0;
+        }
+        img = this.attackImages[this.attackFrame];
+        // Reset other animations
+        this.idleFrameCounter = 0;
+        this.idleFrame = 0;
+        this.jumpFrameCounter = 0;
+        this.jumpFrame = 0;
+        this.runFrameCounter = 0;
+        this.runFrame = 0;
+        this.scytheIdleFrameCounter = 0;
+        this.scytheRunFrameCounter = 0;
+        this.shockwaveIdleFrameCounter = 0;
+        this.shockwaveRunFrameCounter = 0;
+        this.shockwaveJumpFrameCounter = 0;
+      } else if (!this.onGround) {
+        // Jump animation when in the air
+        this.jumpFrameCounter++;
+        if (this.jumpFrameCounter > 8) { // Change frame every 8 frames for faster jump animation
+          this.jumpFrame = (this.jumpFrame + 1) % 4;
+          this.jumpFrameCounter = 0;
+        }
+        img = this.jumpImages[this.jumpFrame];
+        // Reset other animations
+        this.idleFrameCounter = 0;
+        this.idleFrame = 0;
+        this.scytheIdleFrameCounter = 0;
+        this.scytheRunFrameCounter = 0;
+        this.shockwaveIdleFrameCounter = 0;
+        this.shockwaveRunFrameCounter = 0;
+        this.shockwaveJumpFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+      } else if (this.vx === 0 && this.onGround && !this.isAttacking) {
+        // Idle animation when standing still
+        this.idleFrameCounter++;
+        if (this.idleFrameCounter > 30) { // Change frame every 30 frames (~0.5s at 60fps)
+          this.idleFrame = (this.idleFrame + 1) % 2;
+          this.idleFrameCounter = 0;
+        }
+        img = this.idleImages[this.idleFrame];
+        // Reset other animations
+        this.jumpFrameCounter = 0;
+        this.jumpFrame = 0;
+        this.runFrameCounter = 0;
+        this.runFrame = 0;
+        this.scytheIdleFrameCounter = 0;
+        this.scytheRunFrameCounter = 0;
+        this.shockwaveIdleFrameCounter = 0;
+        this.shockwaveRunFrameCounter = 0;
+        this.shockwaveJumpFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+      } else {
+        // Normal run animation when moving on ground with non-scythe weapons
+        this.runFrameCounter++;
+        if (this.runFrameCounter > 12) { // Change frame every 12 frames (0.2s at 60fps)
+          this.runFrame = (this.runFrame + 1) % 6;
+          this.runFrameCounter = 0;
+        }
+        img = this.runImages[this.runFrame];
+        // Reset other animations
+        this.idleFrameCounter = 0;
+        this.jumpFrameCounter = 0;
+        this.idleFrame = 0;
+        this.jumpFrame = 0;
+        this.scytheIdleFrameCounter = 0;
+        this.scytheRunFrameCounter = 0;
+        this.scytheIdleFrame = 0;
+        this.scytheRunFrame = 0;
+        this.shockwaveIdleFrameCounter = 0;
+        this.shockwaveRunFrameCounter = 0;
+        this.shockwaveJumpFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+      }
+    }
+    
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.imageSmoothingEnabled = false;
+      
+      // Handle sprite flipping based on facing direction
+      if (this.facing === 'left') {
+        // Flip horizontally for left-facing
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, -(this.x + this.width), this.y, 32, 48);
+        ctx.restore();
+      } else {
+        // Draw normally for right-facing
+        ctx.drawImage(img, this.x, this.y, 32, 48);
+      }
     }
     // Cosmetic effect
     if (this.cosmetic === 'glow') {
@@ -216,12 +773,49 @@ class Player {
         let offsetAxe = this.facing === 'right' ? this.x + this.width : this.x - 20;
         let offsetSpear = this.facing === 'right' ? this.x + this.width : this.x - 24;
         let offsetBow = this.facing === 'right' ? this.x + this.width : this.x - 16;
-        if (this.weapon === 'sword') ctx.fillRect(offsetX, this.y + 16, 32, 8);
+        // Sword placeholder removed - Normal Attack animation already shows sword
         if (this.weapon === 'axe') ctx.fillRect(offsetAxe, this.y + 12, 20, 12);
         if (this.weapon === 'spear') ctx.fillRect(offsetSpear, this.y + 20, 24, 4);
         if (this.weapon === 'bow') ctx.fillRect(offsetBow, this.y + 24, 16, 4);
       }
     }
+    
+    // Bow charging and aiming indicator
+    if (this.weapon === 'bow' && this.isChargingBow) {
+      let chargePercent = Math.min(this.bowChargeTime / this.maxBowCharge, 1.0);
+      
+      // Charge bar
+      ctx.fillStyle = '#444';
+      ctx.fillRect(this.x - 5, this.y - 20, 42, 6);
+      ctx.fillStyle = chargePercent < 0.5 ? '#ff0' : chargePercent < 0.8 ? '#fa0' : '#0f0';
+      ctx.fillRect(this.x - 4, this.y - 19, 40 * chargePercent, 4);
+      
+      // Aim trajectory preview
+      let baseSpeed = 3 + (chargePercent * 12);
+      let angle = -0.3 + (this.bowAimHeight * 0.8);
+      let vx = (this.facing === 'right' ? 1 : -1) * baseSpeed * Math.cos(angle);
+      let vy = baseSpeed * Math.sin(angle);
+      
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      
+      let x = this.x + this.width/2;
+      let y = this.y + this.height/2;
+      ctx.moveTo(x, y);
+      
+      // Draw trajectory arc (simplified)
+      for (let t = 1; t <= 20; t++) {
+        x += vx * 2;
+        y += vy * 2 + (0.3 * t * 2); // gravity effect
+        ctx.lineTo(x, y);
+        if (x < 0 || x > 800 || y > 600) break;
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+    }
+    
     ctx.restore();
   }
   collides(obj) {
@@ -242,17 +836,12 @@ class Player {
     this.powerUpTimer = 1200; // 20 seconds at 60fps
     this.powerUpCooldown = 1200; // 20 seconds cooldown
     if (type === 'shield') this.invincible = true;
-    if (type === 'newWeapon') {
-      const weapons = ['sword', 'axe', 'spear', 'bow'];
-      this.weapon = weapons[randInt(0, weapons.length - 1)];
-    }
     // Restore energy on heart sacrifice
     this.energy = this.maxEnergy;
     playSound('powerup');
   }
   endPowerUp() {
     if (this.powerUp === 'shield') this.invincible = false;
-    if (this.powerUp === 'newWeapon') this.weapon = 'sword';
     this.powerUp = null;
     this.powerUpTimer = 0;
     // Cooldown remains until expired
@@ -274,11 +863,16 @@ class Enemy {
     this.jumpCooldown = randInt(60, 180); // frames until next jump
     this.onGround = false;
     this.stunned = 0;
+    this.frozen = 0; // For ice shard spell
   }
   update(player, platforms, ladders) {
     if (this.stunned > 0) {
       this.stunned--;
       return;
+    }
+    if (this.frozen > 0) {
+      this.frozen--;
+      return; // Can't move while frozen
     }
     if (this.knockback > 0) {
       this.x += 4;
@@ -289,11 +883,11 @@ class Enemy {
     if (player.x < this.x) this.x -= this.vx;
     else if (player.x > this.x) this.x += this.vx;
 
-    // Random jump logic
+    // Random jump logic (reduced jump height)
     if (this.jumpCooldown > 0) {
       this.jumpCooldown--;
     } else if (this.onGround) {
-      this.vy = -10;
+      this.vy = -5; // Reduced from -10 to make enemies jump lower
       this.onGround = false;
       this.jumpCooldown = randInt(60, 180); // next jump in 1-3 seconds
     }
@@ -301,22 +895,18 @@ class Enemy {
     // Gravity
     this.vy += 0.5;
     this.y += this.vy;
+    
+    // Ground collision - land on the light gray platform
     this.onGround = false;
-    // Platform collision
-    for (let p of platforms) {
-      if (this.collides(p)) {
-        if (this.vy > 0 && this.y + this.height - this.vy <= p.y) {
-          this.y = p.y - this.height;
-          this.vy = 0;
-          this.onGround = true;
-        }
-      }
+    if (this.y + this.height > 550) { // Ground platform is at y=550
+      this.y = 550 - this.height;
+      this.vy = 0;
+      this.onGround = true;
     }
+    
     // Attack player
     if (this.collides(player)) {
       player.takeDamage(1);
-      // PowerUp cooldown tick
-      if (this.powerUpCooldown > 0) this.powerUpCooldown--;
     }
   }
   draw(ctx) {
@@ -347,6 +937,35 @@ class Enemy {
         ctx.restore();
       }
     }
+    // Ice crystals if frozen
+    if (this.frozen > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = '#88ddff';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      
+      // Draw ice overlay on enemy
+      ctx.fillRect(this.x, this.y, this.width, this.height);
+      ctx.strokeRect(this.x, this.y, this.width, this.height);
+      
+      // Draw ice crystals around enemy
+      for (let i = 0; i < 6; i++) {
+        let angle = (Math.PI * 2 * i) / 6;
+        let cx = this.x + this.width / 2 + Math.cos(angle) * 20;
+        let cy = this.y + this.height / 2 + Math.sin(angle) * 20;
+        
+        ctx.strokeStyle = '#00ccff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(cx - 4, cy);
+        ctx.lineTo(cx + 4, cy);
+        ctx.moveTo(cx, cy - 4);
+        ctx.lineTo(cx, cy + 4);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
     ctx.restore();
   }
   collides(obj) {
@@ -366,6 +985,9 @@ class Enemy {
       this.y < hitbox.y + hitbox.height && this.y + this.height > hitbox.y;
   }
   takeDamage(amount) {
+    // Don't take damage while frozen
+    if (this.frozen > 0) return;
+    
     this.health -= amount;
     this.knockback = 10;
     playSound('enemyHurt');
@@ -393,15 +1015,13 @@ class BossEnemy extends Enemy {
     // Gravity
     this.vy += 0.5;
     this.y += this.vy;
+    
+    // Ground collision - land on the light gray platform
     this.onGround = false;
-    for (let p of platforms) {
-      if (this.collides(p)) {
-        if (this.vy > 0 && this.y + this.height - this.vy <= p.y) {
-          this.y = p.y - this.height;
-          this.vy = 0;
-          this.onGround = true;
-        }
-      }
+    if (this.y + this.height > 550) { // Ground platform is at y=550
+      this.y = 550 - this.height;
+      this.vy = 0;
+      this.onGround = true;
     }
     // Attack player
     if (this.collides(player)) {
@@ -413,24 +1033,7 @@ class BossEnemy extends Enemy {
     } else {
       if (game && Math.random() < 0.5) { // 50% chance every cooldown
         let spawnX = this.x + randInt(-40, 120);
-        // Find nearest platform below spawnX
-        let bestPlatform = null;
-        let minDist = Infinity;
-        for (let p of platforms) {
-          if (spawnX >= p.x && spawnX <= p.x + p.width) {
-            let dist = Math.abs((this.y + this.height) - p.y);
-            if (dist < minDist) {
-              minDist = dist;
-              bestPlatform = p;
-            }
-          }
-        }
-        let spawnY;
-        if (bestPlatform) {
-          spawnY = bestPlatform.y - 32; // enemy height
-        } else {
-          spawnY = this.y + this.height; // fallback
-        }
+        let spawnY = 600 - 32; // Spawn on ground level
         game.enemies.push(new Enemy(spawnX, spawnY));
       }
       this.spawnCooldown = randInt(90, 180); // 1.5-3s
@@ -563,8 +1166,426 @@ class Shockwave {
   }
 }
 
+// --- Spell Classes ---
+class Fireball {
+  constructor(x, y, direction) {
+    this.x = x;
+    this.y = y;
+    this.width = 16;
+    this.height = 16;
+    this.speed = 8;
+    // Set velocity based on direction ('left' or 'right')
+    this.vx = direction === 'right' ? this.speed : -this.speed;
+    this.vy = 0; // Travel horizontally
+    this.lifetime = 300; // 5 seconds at 60fps
+    this.exploded = false;
+    this.hasHitEnemy = false; // Track if it has hit an enemy
+  }
+  
+  update(platforms, enemies, player) {
+    if (this.exploded || this.hasHitEnemy) return null;
+    
+    this.x += this.vx;
+    this.y += this.vy;
+    this.lifetime--;
+    
+    // Check collision with platforms - explode on wall hit
+    for (let p of platforms) {
+      if (this.collides(p)) {
+        return this.explode(enemies, player);
+      }
+    }
+    
+    // Check collision with enemies - hit only one enemy with direct damage
+    for (let enemy of enemies) {
+      if (this.collides(enemy)) {
+        enemy.takeDamage(2); // Direct damage, single target
+        this.hasHitEnemy = true;
+        this.exploded = true;
+        return null;
+      }
+    }
+    
+    // Check bounds - explode when hitting screen boundaries
+    if (this.x < 0 || this.x > 800 || this.y < 0 || this.y > 600 || this.lifetime <= 0) {
+      return this.explode(enemies, player);
+    }
+    
+    return null;
+  }
+  
+  explode(enemies, player) {
+    this.exploded = true;
+    
+    // Small area damage when hitting walls - affects all entities within explosion radius
+    const explosionRadius = 40; // Smaller radius than before
+    const explosionDamage = 1; // Lower damage than direct hit
+    
+    // Damage all enemies within radius
+    for (let enemy of enemies) {
+      let dx = enemy.x + enemy.width/2 - (this.x + this.width/2);
+      let dy = enemy.y + enemy.height/2 - (this.y + this.height/2);
+      let distance = Math.sqrt(dx * dx + dy * dy);
+      
+      if (distance <= explosionRadius) {
+        enemy.takeDamage(explosionDamage);
+        // Add visual feedback for explosion hit
+        enemy.stunned = Math.max(enemy.stunned, 10); // 0.17 seconds
+      }
+    }
+    
+    // Also damage player if they're too close (friendly fire)
+    let playerDx = player.x + player.width/2 - (this.x + this.width/2);
+    let playerDy = player.y + player.height/2 - (this.y + this.height/2);
+    let playerDistance = Math.sqrt(playerDx * playerDx + playerDy * playerDy);
+    
+    if (playerDistance <= explosionRadius) {
+      player.takeDamage(1); // Light damage to player
+    }
+    
+    // Return explosion effect for visual display
+    return new Explosion(this.x + this.width/2, this.y + this.height/2);
+  }
+  
+  collides(obj) {
+    return this.x < obj.x + obj.width &&
+           this.x + this.width > obj.x &&
+           this.y < obj.y + obj.height &&
+           this.y + this.height > obj.y;
+  }
+  
+  draw(ctx) {
+    if (this.exploded) return;
+    
+    ctx.save();
+    ctx.fillStyle = '#ff4400';
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 10;
+    
+    // Draw fireball with flame effect
+    ctx.beginPath();
+    ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width/2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Inner bright core
+    ctx.fillStyle = '#ffff00';
+    ctx.beginPath();
+    ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width/4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  
+  isDone() {
+    return this.exploded;
+  }
+}
+
+class IceShard {
+  constructor(x, y, direction) {
+    this.x = x;
+    this.y = y;
+    this.width = 12;
+    this.height = 12;
+    this.speed = 10;
+    // Set velocity based on direction ('left' or 'right')
+    this.vx = direction === 'right' ? this.speed : -this.speed;
+    this.vy = 0; // Travel horizontally
+    this.lifetime = 240; // 4 seconds at 60fps
+    this.broken = false;
+  }
+  
+  update(platforms, enemies, player) {
+    if (this.broken) return;
+    
+    this.x += this.vx;
+    this.y += this.vy;
+    this.lifetime--;
+    
+    // Check collision with platforms - breaks on contact
+    for (let p of platforms) {
+      if (this.collides(p)) {
+        this.break();
+        return;
+      }
+    }
+    
+    // Check collision with enemies - freezes them
+    for (let enemy of enemies) {
+      if (this.collides(enemy)) {
+        enemy.frozen = 120; // 2 seconds at 60fps
+        this.break();
+        return;
+      }
+    }
+    
+    // Check bounds
+    if (this.x < 0 || this.x > 800 || this.y < 0 || this.y > 600 || this.lifetime <= 0) {
+      this.break();
+    }
+  }
+  
+  break() {
+    this.broken = true;
+    playSound('ice_break');
+  }
+  
+  collides(obj) {
+    return this.x < obj.x + obj.width &&
+           this.x + this.width > obj.x &&
+           this.y < obj.y + obj.height &&
+           this.y + this.height > obj.y;
+  }
+  
+  draw(ctx) {
+    if (this.broken) return;
+    
+    ctx.save();
+    ctx.fillStyle = '#00ccff';
+    ctx.shadowColor = '#0088cc';
+    ctx.shadowBlur = 8;
+    
+    // Draw ice shard as diamond shape
+    ctx.beginPath();
+    ctx.moveTo(this.x + this.width/2, this.y);
+    ctx.lineTo(this.x + this.width, this.y + this.height/2);
+    ctx.lineTo(this.x + this.width/2, this.y + this.height);
+    ctx.lineTo(this.x, this.y + this.height/2);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Inner bright core
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(this.x + this.width/2, this.y + this.height/4);
+    ctx.lineTo(this.x + 3*this.width/4, this.y + this.height/2);
+    ctx.lineTo(this.x + this.width/2, this.y + 3*this.height/4);
+    ctx.lineTo(this.x + this.width/4, this.y + this.height/2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  
+  isDone() {
+    return this.broken;
+  }
+}
+
+class HealingWave {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.radius = 0;
+    this.maxRadius = 120;
+    this.duration = 60; // 1 second at 60fps
+    this.frame = 0;
+    this.healed = new Set(); // Track what we've already healed
+  }
+  
+  update(enemies, player) {
+    this.frame++;
+    this.radius = (this.frame / this.duration) * this.maxRadius;
+    
+    // Heal nearby entities (only once per wave)
+    const healAmount = randInt(1, 5);
+    
+    // Heal player if nearby and not already healed
+    if (!this.healed.has('player')) {
+      let distToPlayer = Math.sqrt((player.x - this.x) ** 2 + (player.y - this.y) ** 2);
+      if (distToPlayer <= this.radius) {
+        player.hearts = Math.min(player.hearts + healAmount, player.maxHearts);
+        this.healed.add('player');
+        playSound('heal');
+      }
+    }
+    
+    // Heal nearby enemies
+    enemies.forEach((enemy, index) => {
+      if (!this.healed.has(`enemy_${index}`)) {
+        let distToEnemy = Math.sqrt((enemy.x - this.x) ** 2 + (enemy.y - this.y) ** 2);
+        if (distToEnemy <= this.radius) {
+          enemy.health = Math.min(enemy.health + healAmount, 3);
+          this.healed.add(`enemy_${index}`);
+        }
+      }
+    });
+  }
+  
+  draw(ctx) {
+    ctx.save();
+    ctx.globalAlpha = 0.6 * (1 - this.frame / this.duration);
+    
+    // Draw healing wave as expanding green circles
+    let gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
+    gradient.addColorStop(0, '#00ff00');
+    gradient.addColorStop(0.5, '#88ff88');
+    gradient.addColorStop(1, 'transparent');
+    
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Inner healing sparkles
+    ctx.fillStyle = '#00ff00';
+    for (let i = 0; i < 8; i++) {
+      let angle = (i / 8) * Math.PI * 2 + (this.frame * 0.1);
+      let sparkleRadius = this.radius * 0.7;
+      let sparkleX = this.x + Math.cos(angle) * sparkleRadius;
+      let sparkleY = this.y + Math.sin(angle) * sparkleRadius;
+      ctx.beginPath();
+      ctx.arc(sparkleX, sparkleY, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    ctx.restore();
+  }
+  
+  isDone() {
+    return this.frame >= this.duration;
+  }
+}
+
+class Explosion {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.radius = 0;
+    this.maxRadius = 60;
+    this.duration = 20; // Short explosion animation
+    this.frame = 0;
+  }
+  
+  update() {
+    this.frame++;
+    this.radius = (this.frame / this.duration) * this.maxRadius;
+  }
+  
+  draw(ctx) {
+    if (this.frame >= this.duration) return;
+    
+    ctx.save();
+    let alpha = 0.8 * (1 - this.frame / this.duration);
+    ctx.globalAlpha = alpha;
+    
+    // Draw expanding explosion circles
+    let gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
+    gradient.addColorStop(0, '#ffffff');
+    gradient.addColorStop(0.3, '#ffff00');
+    gradient.addColorStop(0.6, '#ff4400');
+    gradient.addColorStop(1, '#ff0000');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Outer shockwave ring
+    ctx.strokeStyle = '#ff8800';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    ctx.restore();
+  }
+  
+  isDone() {
+    return this.frame >= this.duration;
+  }
+}
+
+class Arrow {
+  constructor(x, y, direction, charge, aimHeight) {
+    this.x = x;
+    this.y = y;
+    this.width = 8;
+    this.height = 3;
+    this.damage = Math.floor(charge * 5); // 0-5 damage based on charge
+    
+    // Calculate trajectory based on charge and aim height
+    let chargePercent = charge; // 0 to 1
+    let baseSpeed = 3 + (chargePercent * 12); // 3-15 speed
+    let angle = -0.3 + (aimHeight * 0.8); // Angle from -1.1 to 0.5 radians
+    
+    this.vx = (direction === 'right' ? 1 : -1) * baseSpeed * Math.cos(angle);
+    this.vy = baseSpeed * Math.sin(angle);
+    this.gravity = 0.3;
+    this.lifetime = 600; // 10 seconds max
+    this.stuck = false;
+  }
+  
+  update(platforms, enemies, player) {
+    if (this.stuck) return;
+    
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vy += this.gravity; // Parabolic trajectory
+    this.lifetime--;
+    
+    // Check collision with platforms
+    for (let p of platforms) {
+      if (this.collides(p)) {
+        this.stuck = true;
+        return;
+      }
+    }
+    
+    // Check collision with enemies
+    for (let enemy of enemies) {
+      if (this.collides(enemy)) {
+        enemy.takeDamage(this.damage);
+        this.stuck = true;
+        return;
+      }
+    }
+    
+    // Check bounds
+    if (this.x < -50 || this.x > 850 || this.y > 650 || this.lifetime <= 0) {
+      this.stuck = true;
+    }
+  }
+  
+  collides(obj) {
+    return this.x < obj.x + obj.width &&
+           this.x + this.width > obj.x &&
+           this.y < obj.y + obj.height &&
+           this.y + this.height > obj.y;
+  }
+  
+  draw(ctx) {
+    if (this.stuck) return;
+    
+    ctx.save();
+    ctx.fillStyle = '#8B4513'; // Brown arrow shaft
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+    
+    // Arrow tip
+    ctx.fillStyle = '#C0C0C0'; // Silver arrowhead
+    ctx.beginPath();
+    if (this.vx > 0) {
+      // Right-facing arrow
+      ctx.moveTo(this.x + this.width, this.y + this.height/2);
+      ctx.lineTo(this.x + this.width + 4, this.y + this.height/2 - 2);
+      ctx.lineTo(this.x + this.width + 4, this.y + this.height/2 + 2);
+    } else {
+      // Left-facing arrow
+      ctx.moveTo(this.x, this.y + this.height/2);
+      ctx.lineTo(this.x - 4, this.y + this.height/2 - 2);
+      ctx.lineTo(this.x - 4, this.y + this.height/2 + 2);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  
+  isDone() {
+    return this.stuck;
+  }
+}
+
 // --- PowerUp System ---
-const POWERUPS = ['damage', 'speed', 'shield', 'shockwave', 'newWeapon'];
+const POWERUPS = ['damage', 'speed', 'shield', 'shockwave'];
 function getRandomPowerUp() {
   return POWERUPS[randInt(0, POWERUPS.length - 1)];
 }
@@ -688,6 +1709,11 @@ class Game {
     this.loop = this.loop.bind(this);
     this.initInput();
     this.shockwaves = [];
+    this.fireballs = [];
+    this.iceShards = [];
+    this.healingWaves = [];
+    this.explosions = [];
+    this.arrows = [];
     requestAnimationFrame(this.loop);
   }
 
@@ -697,10 +1723,28 @@ class Game {
     this.hazards = level.hazards.map(h => new Hazard(h.x, h.y, h.width, h.height));
     this.ladders = level.ladders ? level.ladders.map(l => new Ladder(l.x, l.y, l.width, l.height)) : [];
   this.enemies = level.enemies.map(e => e.boss ? new BossEnemy(e.x, e.y) : new Enemy(e.x, e.y));
+    
+    // Set hearts based on level: Level 1 = 5 hearts, Level 2 = 10 hearts, Level 3 = 15 hearts
+    let heartsForLevel;
+    switch (levelIdx) {
+      case 0: // Level 1
+        heartsForLevel = 5;
+        break;
+      case 1: // Level 2
+        heartsForLevel = 10;
+        break;
+      case 2: // Level 3
+        heartsForLevel = 15;
+        break;
+      default: // Any additional levels default to 5 hearts
+        heartsForLevel = 5;
+        break;
+    }
+    
     if (!this.player) {
       this.player = new Player(level.playerStart.x, level.playerStart.y);
-      this.player.hearts = 5;
-      this.player.maxHearts = 5;
+      this.player.hearts = heartsForLevel;
+      this.player.maxHearts = heartsForLevel;
       this.ui = new UI(this.player);
       this.initFullscreen();
     } else {
@@ -710,6 +1754,9 @@ class Game {
       this.player.vy = 0;
       this.player.onGround = false;
       this.player.jumps = 0;
+      // Update hearts when progressing to a new level
+      this.player.hearts = heartsForLevel;
+      this.player.maxHearts = heartsForLevel;
     }
     this.levelComplete = false;
     this.gameOver = false;
@@ -727,6 +1774,27 @@ class Game {
       }
     });
   }
+  
+  findNearestEnemy() {
+    if (this.enemies.length === 0) return null;
+    
+    let nearestEnemy = null;
+    let shortestDistance = Infinity;
+    
+    for (let enemy of this.enemies) {
+      let dx = enemy.x - this.player.x;
+      let dy = enemy.y - this.player.y;
+      let distance = Math.sqrt(dx * dx + dy * dy);
+      
+      if (distance < shortestDistance) {
+        shortestDistance = distance;
+        nearestEnemy = enemy;
+      }
+    }
+    
+    return nearestEnemy;
+  }
+  
   initInput() {
     window.addEventListener('keydown', e => {
       if ((e.code === 'KeyE') && this.player.hearts > 1 && this.player.powerUpCooldown <= 0) {
@@ -734,24 +1802,58 @@ class Game {
         let p = getRandomPowerUp();
         this.player.startPowerUp(p);
         if (p === 'shockwave') {
-          // Add visible shockwave effect
-          this.shockwaves.push(new Shockwave(this.player.x + this.player.width / 2, this.player.y + this.player.height / 2, 60, 30));
+          // Add visible shockwave effect (made bigger)
+          this.shockwaves.push(new Shockwave(this.player.x + this.player.width / 2, this.player.y + this.player.height / 2, 120, 40));
           for (let enemy of this.enemies) {
-            if (Math.abs(enemy.x - this.player.x) < 80) {
+            if (Math.abs(enemy.x - this.player.x) < 150) {
               enemy.takeDamage(2);
               enemy.stunned = 30; // 0.5 seconds at 60fps
             }
           }
         }
       }
+      
+      // Spellcaster abilities (Z, C, R keys) - with cooldown and casting system
+      if (this.player.weapon === 'spellcaster' && this.player.spellCooldown <= 0 && !this.player.isCasting) {
+        if (e.code === 'KeyZ') {
+          // Start fireball casting
+          let nearestEnemy = this.findNearestEnemy();
+          if (nearestEnemy) {
+            this.player.isCasting = true;
+            this.player.castingTimer = 0;
+            this.player.castingSpell = 'fireball';
+            this.player.spellCooldown = 30; // 0.5 seconds at 60fps
+          }
+        }
+        
+        if (e.code === 'KeyC') {
+          // Start ice shard casting
+          let nearestEnemy = this.findNearestEnemy();
+          if (nearestEnemy) {
+            this.player.isCasting = true;
+            this.player.castingTimer = 0;
+            this.player.castingSpell = 'iceShard';
+            this.player.spellCooldown = 30; // 0.5 seconds at 60fps
+          }
+        }
+        
+        if (e.code === 'KeyR') {
+          // Start healing wave casting
+          if (this.player.healingStun <= 0) {
+            this.player.isCasting = true;
+            this.player.castingTimer = 0;
+            this.player.castingSpell = 'healingWave';
+            this.player.spellCooldown = 30; // 0.5 seconds at 60fps
+          }
+        }
+      }
+      
       if (e.code === 'Escape' || e.code === 'KeyP') {
         this.paused = !this.paused;
       }
       if (e.code === 'KeyN' && this.levelComplete && this.currentLevel < this.levels.length - 1) {
   this.currentLevel++;
-  // Gain 1 heart to both max and current health
-  this.player.maxHearts++;
-  this.player.hearts = this.player.maxHearts; // Fully restore health
+  // Hearts will be set automatically by loadLevel based on the new level
   this.player.ammo = this.player.maxAmmo; // Fully restore ammo
   this.loadLevel(this.currentLevel);
   this.levelComplete = false;
@@ -780,6 +1882,32 @@ class Game {
   }
   update() {
     this.player.update(this.input, this.platforms, this.hazards, this.enemies, this.ladders);
+    
+    // Check if player completed casting and release spell
+    if (this.player.completeCasting) {
+      let spellResult = this.player.releaseSpell(this);
+      if (spellResult && spellResult.spell) {
+        switch (spellResult.type) {
+          case 'fireball':
+            this.fireballs.push(spellResult.spell);
+            break;
+          case 'iceShard':
+            this.iceShards.push(spellResult.spell);
+            break;
+          case 'healingWave':
+            this.healingWaves.push(spellResult.spell);
+            break;
+        }
+      }
+      this.player.completeCasting = false;
+    }
+    
+    // Check if player released an arrow
+    let arrow = this.player.createArrow();
+    if (arrow) {
+      this.arrows.push(arrow);
+    }
+    
     let killedThisFrame = 0;
     for (let enemy of this.enemies) {
       if (enemy instanceof BossEnemy) {
@@ -792,19 +1920,11 @@ class Game {
         let dmg = this.player.powerUp === 'damage' ? 2 : 1;
         enemy.takeDamage(dmg);
         this.player._attackHit = true;
-        // Knockback player unless touching wall
-        let touchingWall = false;
-        for (let p of this.platforms) {
-          if (this.player.x <= p.x || this.player.x + this.player.width >= p.x + p.width) {
-            touchingWall = true;
-            break;
-          }
-        }
-        if (!touchingWall) {
-          // Fling player back
-          let kb = this.player.facing === 'right' ? -8 : 8;
-          this.player.vx = kb;
-        }
+        
+        // Set attack momentum for forward movement
+        let kb = this.player.facing === 'right' ? 10 : -10;
+        this.player.attackMomentum = kb;
+        this.player.attackMomentumTimer = 8; // 8 frames of momentum (about 0.13 seconds at 60fps)
       }
       if (enemy.isDead()) {
         killedThisFrame++;
@@ -835,6 +1955,38 @@ class Game {
       sw.update();
       return !sw.isDone();
     });
+    
+    // Update spells
+    this.fireballs = this.fireballs.filter(fireball => {
+      let explosion = fireball.update(this.platforms, this.enemies, this.player);
+      if (explosion) {
+        this.explosions.push(explosion);
+      }
+      return !fireball.isDone();
+    });
+    
+    this.iceShards = this.iceShards.filter(iceShard => {
+      iceShard.update(this.platforms, this.enemies, this.player);
+      return !iceShard.isDone();
+    });
+    
+    this.healingWaves = this.healingWaves.filter(wave => {
+      wave.update(this.enemies, this.player);
+      return !wave.isDone();
+    });
+    
+    // Update arrows
+    this.arrows = this.arrows.filter(arrow => {
+      arrow.update(this.platforms, this.enemies, this.player);
+      return !arrow.isDone();
+    });
+    
+    // Update explosions
+    this.explosions = this.explosions.filter(explosion => {
+      explosion.update();
+      return !explosion.isDone();
+    });
+    
     // Level complete condition
     if (this.enemies.length === 0) {
       this.levelComplete = true;
@@ -853,6 +2005,14 @@ class Game {
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     // Shockwaves
     for (let sw of this.shockwaves) sw.draw(this.ctx);
+    // Spells
+    for (let fireball of this.fireballs) fireball.draw(this.ctx);
+    for (let iceShard of this.iceShards) iceShard.draw(this.ctx);
+    for (let wave of this.healingWaves) wave.draw(this.ctx);
+    // Arrows
+    for (let arrow of this.arrows) arrow.draw(this.ctx);
+    // Explosions
+    for (let explosion of this.explosions) explosion.draw(this.ctx);
     // Platforms
     for (let p of this.platforms) p.draw(this.ctx);
     // Hazards
@@ -915,5 +2075,5 @@ class Game {
 
 // --- Start Game ---
 window.onload = () => {
-  new Game();
+  window.game = new Game();
 };
