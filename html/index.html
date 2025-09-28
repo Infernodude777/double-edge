@@ -18,57 +18,64 @@
   </div>
     <button id="fullscreen-btn" style="margin-top:12px;font-size:16px;">Fullscreen</button>
     <div id="cooldown-bottom"></div>
-    <div id="shop-menu" style="position:fixed;top:0;right:0;width:260px;height:100vh;background:#181818e0;color:#fff;z-index:1000;padding:16px;box-shadow:-2px 0 8px #000;overflow-y:auto;">
+    <div id="weapon-selector" style="position:fixed;top:0;right:0;width:200px;height:auto;background:#181818e0;color:#fff;z-index:1000;padding:16px;box-shadow:-2px 0 8px #000;">
       <button id="reset-btn" style="width:100%;margin-bottom:16px;padding:10px 0;font-size:18px;font-family:'Press Start 2P',cursive;background:linear-gradient(90deg,#f0f,#0ff);color:#fff;border:none;border-radius:8px;box-shadow:0 2px 8px #f0f;letter-spacing:2px;cursor:pointer;transition:transform 0.1s;outline:none;">
         &#x21bb; RESET GAME
       </button>
-      <div id="shop-error" style="min-height:24px;font-size:16px;font-family:'Press Start 2P',cursive;"></div>
-      <div id="shop-container"></div>
+      <h3 style="margin-top:0;font-family:'Press Start 2P',cursive;font-size:14px;">Weapon Select</h3>
+      <div id="weapon-container"></div>
     </div>
   <script type="module" src="game.js"></script>
   <script type="module">
-    import { Shop, renderShop } from './shop.js';
-    function getPlayer() {
-      return window.game && window.game.player ? window.game.player : { hearts: 5, weapon: 'sword' };
-    }
-    let shop;
-    let shopContainer = document.getElementById('shop-container');
-    function rerender() {
-      renderShop(shop, shopContainer);
-      // Clear error on rerender
-      const shopError = document.getElementById('shop-error');
-      if (shopError) shopError.textContent = '';
-      // Use event delegation for weapon selection
-      Array.from(shopContainer.querySelectorAll('.shop-item')).forEach((el, i) => {
-        el.style.cursor = 'pointer';
-        el.onclick = () => {
-          shop.selectedIndex = i;
-          rerender();
-        };
-      });
-      const buyBtn = document.getElementById('buy-btn');
-      if (buyBtn) {
-        buyBtn.onclick = () => {
-          const player = getPlayer();
-          const selectedItem = shop.items[shop.selectedIndex];
-          const selectedWeapon = selectedItem.name.toLowerCase();
-          if (player.weapon === selectedWeapon) {
-            if (shopError) shopError.textContent = 'You already have this weapon equipped!';
-            if (shopError) shopError.style.color = '#f0f';
-            return;
-          }
-          if (shop.buy(shop.selectedIndex, player)) {
-            player.weapon = selectedWeapon;
-            rerender();
-          } else {
-            if (shopError) {
-              shopError.textContent = 'Not enough hearts!';
-              shopError.style.color = '#f00';
-            }
-          }
-        };
+    const weapons = [
+      { name: 'Sword', id: 'sword', description: 'Default balanced weapon' },
+      { name: 'Scythe', id: 'scythe', description: 'More range, more damage, slower cooldown' },
+      { name: 'Spellcaster', id: 'spellcaster', description: 'Cast spells: Fireball, Ice Ball, Heal' },
+      { name: 'Bow', id: 'bow', description: 'Charge and aim for ranged precision damage' }
+    ];
+    
+    let weaponContainer = document.getElementById('weapon-container');
+    
+    function renderWeaponSelector() {
+      if (!window.game || !window.game.player) {
+        weaponContainer.innerHTML = '<p style="font-size:12px;color:#888;">Game loading...</p>';
+        return;
       }
-      // Fancy reset button logic
+      
+      const currentWeapon = window.game.player.weapon;
+      weaponContainer.innerHTML = '';
+      
+      weapons.forEach((weapon, i) => {
+        const isSelected = currentWeapon === weapon.id;
+        const weaponDiv = document.createElement('div');
+        weaponDiv.style.cssText = `
+          margin:8px 0;
+          padding:8px;
+          border-radius:6px;
+          cursor:pointer;
+          border:2px solid ${isSelected ? '#f0f' : '#444'};
+          background:${isSelected ? '#222' : 'transparent'};
+          ${isSelected ? 'box-shadow:0 0 8px #f0f;' : ''}
+        `;
+        
+        weaponDiv.innerHTML = `
+          <b>${weapon.name}</b> ${isSelected ? '<span style="color:#f0f;float:right;">ACTIVE</span>' : ''}<br>
+          <span style="font-size:10px;color:#ccc;">${weapon.description}</span>
+        `;
+        
+        weaponDiv.onclick = () => {
+          if (window.game && window.game.player) {
+            window.game.player.weapon = weapon.id;
+            renderWeaponSelector();
+          }
+        };
+        
+        weaponContainer.appendChild(weaponDiv);
+      });
+    }
+    
+    // Reset button logic
+    window.addEventListener('DOMContentLoaded', () => {
       const resetBtn = document.getElementById('reset-btn');
       if (resetBtn) {
         resetBtn.onmouseenter = () => { resetBtn.style.transform = 'scale(1.07)'; };
@@ -81,15 +88,12 @@
           }
         };
       }
-    }
-    window.addEventListener('DOMContentLoaded', () => {
-      shop = new Shop();
-      shop.setupDefaultItems();
-      rerender();
+      renderWeaponSelector();
     });
-    // Rerender shop when hearts change
+    
+    // Update weapon selector periodically
     setInterval(() => {
-      if (shop) rerender();
+      renderWeaponSelector();
     }, 500);
   </script>
 </body>
