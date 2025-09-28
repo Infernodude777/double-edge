@@ -2,7 +2,7 @@
 // Modular ES6 classes, placeholder shapes, and comments for future sprite import
 
 // --- Sound Stub ---
-export function playSound(name) {
+function playSound(name) {
   // TODO: Insert .wav/.mp3 files later
   // Example: new Audio(`assets/sounds/${name}.wav`).play();
 }
@@ -296,6 +296,11 @@ class Player {
     let moveSpeed = this.powerUp === 'speed' ? this.speed * 1.7 : this.speed;
     if (this.isChargingBow) {
       moveSpeed *= 0.3; // Move 30% speed while charging bow
+    }
+    
+    // DEBUG: Log movement speed
+    if (Math.random() < 0.01) { // Log occasionally to avoid spam
+      console.log('Player moveSpeed:', moveSpeed, 'base speed:', this.speed, 'hearts:', this.hearts, 'powerUp:', this.powerUp);
     }
     
     if (this.healingStun <= 0 && !this.isCasting) {
@@ -1185,8 +1190,8 @@ class BossEnemy extends Enemy {
 class SuperBoss extends BossEnemy {
   constructor(x, y) {
     super(x, y);
-    this.width = 120;
-    this.height = 120;
+    this.width = 60;  // Smaller than before (was 120)
+    this.height = 60; // Smaller than before (was 120)
     this.color = '#8A2BE2'; // Blue violet
     this.health = 50;
     this.maxHealth = 50;
@@ -1212,30 +1217,40 @@ class SuperBoss extends BossEnemy {
     }
     
     // Don't attack if dead
-    if (this.isDead()) {
+    if (this.health <= 0) {
       return;
     }
     
-    // Movement - slower and more deliberate
-    if (player.x < this.x) this.x -= 0.5;
-    else if (player.x > this.x) this.x += 0.5;
+    // Movement toward player - more aggressive
+    let dx = player.x - this.x;
+    let dy = player.y - this.y;
+    let distance = Math.sqrt(dx * dx + dy * dy);
     
-    // Gravity
+    if (distance > 80) { // Only move if not too close
+      if (dx < -10) this.x -= 1;
+      else if (dx > 10) this.x += 1;
+    }
+    
+    // Gravity and ground collision
     this.vy += 0.4;
     this.y += this.vy;
     
     // Platform collision
     for (let platform of platforms) {
       if (this.x < platform.x + platform.width && this.x + this.width > platform.x &&
-          this.y < platform.y + platform.height && this.y + this.height > platform.y) {
-        if (this.vy > 0 && this.y < platform.y) {
+          this.y + this.height > platform.y && this.y < platform.y + platform.height) {
+        if (this.vy > 0) {
           this.y = platform.y - this.height;
           this.vy = 0;
         }
       }
     }
     
-    // Update attack pattern
+    // Keep on screen
+    if (this.x < 0) this.x = 0;
+    if (this.x + this.width > 800) this.x = 800 - this.width;
+    
+    // Update attack pattern timing
     this.patternTimer++;
     if (this.patternTimer >= this.patternDuration) {
       this.attackPattern = (this.attackPattern + 1) % 3;
@@ -1269,17 +1284,26 @@ class SuperBoss extends BossEnemy {
         break;
     }
     
-    // Take damage from player
-    if (this.attackedBy(player) && !player._attackHit) {
+    // Take damage from player attacks
+    if (this.attackedBy && this.attackedBy(player) && !player._attackHit) {
       let dmg = player.powerUp === 'damage' ? 3 : 2;
-      this.takeDamage(dmg);
+      this.health -= dmg;
+      this.stunned = 30;
       player._attackHit = true;
+      console.log('SuperBoss took damage, health now:', this.health);
+    }
+    
+    // Deal damage to player on contact
+    if (distance < 40 && !player.invincible) {
+      player.takeDamage(2);
+      player.invincible = true;
+      setTimeout(() => player.invincible = false, 1000); // 1 second invincibility
     }
   }
   
   summonAsteroid(player, game) {
     // Create asteroid aimed at player's current position
-    let asteroid = new Asteroid(this.x + this.width/2, player.x, player.y);
+    let asteroid = new Asteroid(player.x, player.y);
     game.asteroids.push(asteroid);
   }
   
@@ -1307,29 +1331,23 @@ class SuperBoss extends BossEnemy {
   draw(ctx) {
     ctx.save();
     
-    // Pulsing effect based on health
-    let healthPercent = this.health / this.maxHealth;
-    let pulse = Math.sin(Date.now() * 0.01) * 0.3 + 0.7;
-    ctx.globalAlpha = healthPercent * pulse;
-    
-    // Draw boss body with gradient effect
-    let gradient = ctx.createRadialGradient(
-      this.x + this.width/2, this.y + this.height/2, 0,
-      this.x + this.width/2, this.y + this.height/2, this.width/2
-    );
-    gradient.addColorStop(0, '#9932CC'); // Dark orchid
-    gradient.addColorStop(1, this.color);
-    
-    ctx.fillStyle = gradient;
+    // Simple solid drawing for debugging - make SuperBosses very visible
+    ctx.fillStyle = this.color; // Use the boss color directly
     ctx.fillRect(this.x, this.y, this.width, this.height);
+    
+    // White border for visibility
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(this.x, this.y, this.width, this.height);
     
     // Attack pattern indicator
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = '12px "Press Start 2P"';
+    ctx.font = '12px monospace';
     let patternText = ['ASTEROID', 'LASER', 'MINION'][this.attackPattern];
     ctx.fillText(patternText, this.x, this.y - 10);
     
     // Health bar
+    let healthPercent = this.health / this.maxHealth;
     let healthBarWidth = this.width;
     let healthBarHeight = 8;
     let healthBarY = this.y - 20;
@@ -1875,7 +1893,7 @@ class Arrow {
 // --- Asteroid Class ---
 class Asteroid {
   constructor(targetX, targetY) {
-    this.x = targetX; // Start at boss X coordinate
+    this.x = Math.random() * 800; // Random X position across screen
     this.y = -50; // Start above screen
     
     // Random size affects speed
@@ -1893,8 +1911,13 @@ class Asteroid {
     let distance = Math.sqrt(dx * dx + dy * dy);
     
     // Normalize direction and apply speed
-    this.vx = (dx / distance) * this.baseSpeed * 0.3; // Horizontal component
-    this.vy = this.baseSpeed; // Mainly downward movement
+    if (distance > 0) {
+      this.vx = (dx / distance) * this.baseSpeed * 0.3; // Horizontal component
+      this.vy = this.baseSpeed; // Mainly downward movement
+    } else {
+      this.vx = 0;
+      this.vy = this.baseSpeed;
+    }
     
     this.damage = this.sizeType === 'medium' ? 2 : 3;
     this.rotation = 0;
@@ -2025,29 +2048,49 @@ class UI {
     this.powerupDiv = document.getElementById('powerup');
   }
   update() {
-    // Hearts
-    let heartsHTML = '';
-    for (let i = 0; i < this.player.maxHearts; i++) {
-      heartsHTML += `<span style="color:${i < this.player.hearts ? '#f00' : '#444'};font-size:36px;font-family:'Press Start 2P','Courier New',monospace;">&#10084;</span> `;
+    // Optimized Hearts - only update if changed
+    if (!this.lastHeartDisplay || this.lastHeartDisplay !== `${this.player.hearts}/${this.player.maxHearts}`) {
+      let heartsHTML = '';
+      // Use simpler styling and limit heart display to prevent performance issues
+      let displayHearts = Math.min(this.player.hearts, 10); // Show max 10 hearts
+      let displayMaxHearts = Math.min(this.player.maxHearts, 10); // Show max 10 hearts
+      
+      for (let i = 0; i < displayMaxHearts; i++) {
+        heartsHTML += i < displayHearts ? '❤️' : '🖤';
+      }
+      
+      // If more than 10 hearts, show count
+      if (this.player.maxHearts > 10) {
+        heartsHTML += ` (${this.player.hearts}/${this.player.maxHearts})`;
+      }
+      
+      this.heartsDiv.innerHTML = `<div style="font-size:24px;">${heartsHTML}</div>`;
+      this.lastHeartDisplay = `${this.player.hearts}/${this.player.maxHearts}`;
     }
-    this.heartsDiv.innerHTML = heartsHTML;
-    // Energy bar
+    // Optimized Energy bar - only update if changed
     let percent = Math.floor((this.player.energy / this.player.maxEnergy) * 100);
-    let gradient = this.player.powerUp ?
-      `linear-gradient(270deg, #ff0, #f0f, #0ff, #ff0)` :
-      `linear-gradient(90deg, #0ff 60%, #ff0 100%)`;
-    this.energyDiv.innerHTML = `<div id='energybar-inner' style='width:${percent}%;background:${gradient}'></div>`;
-    // Ammo bar
-    let ammoPercent = Math.floor((this.player.ammo / this.player.maxAmmo) * 100);
-    let ammoGradient = `linear-gradient(90deg, #fff 60%, #f00 100%)`;
-    if (!document.getElementById('ammobar')) {
-      let bar = document.createElement('div');
-      bar.id = 'ammobar';
-      bar.style.height = '6px';
-      bar.style.marginBottom = '2px';
-      this.energyDiv.parentNode.insertBefore(bar, this.energyDiv.nextSibling);
+    if (!this.lastEnergyPercent || this.lastEnergyPercent !== percent) {
+      let gradient = this.player.powerUp ?
+        `linear-gradient(270deg, #ff0, #f0f, #0ff, #ff0)` :
+        `linear-gradient(90deg, #0ff 60%, #ff0 100%)`;
+      this.energyDiv.innerHTML = `<div id='energybar-inner' style='width:${percent}%;background:${gradient}'></div>`;
+      this.lastEnergyPercent = percent;
     }
-    document.getElementById('ammobar').innerHTML = `<div id='ammobar-inner' style='width:${ammoPercent}%;background:${ammoGradient};height:100%;'></div>`;
+    
+    // Optimized Ammo bar - only update if changed
+    let ammoPercent = Math.floor((this.player.ammo / this.player.maxAmmo) * 100);
+    if (!this.lastAmmoPercent || this.lastAmmoPercent !== ammoPercent) {
+      let ammoGradient = `linear-gradient(90deg, #fff 60%, #f00 100%)`;
+      if (!document.getElementById('ammobar')) {
+        let bar = document.createElement('div');
+        bar.id = 'ammobar';
+        bar.style.height = '6px';
+        bar.style.marginBottom = '2px';
+        this.energyDiv.parentNode.insertBefore(bar, this.energyDiv.nextSibling);
+      }
+      document.getElementById('ammobar').innerHTML = `<div id='ammobar-inner' style='width:${ammoPercent}%;background:${ammoGradient};height:100%;'></div>`;
+      this.lastAmmoPercent = ammoPercent;
+    }
     // Powerup
     if (this.player.powerUp) {
       let name = this.player.powerUp;
@@ -2068,9 +2111,13 @@ class UI {
 // --- Game Class ---
 class Game {
   constructor() {
+    console.log('Game constructor called');
     this.canvas = document.getElementById('gameCanvas');
+    console.log('Canvas element:', this.canvas);
     this.ctx = this.canvas.getContext('2d');
+    console.log('Canvas context:', this.ctx);
     this.input = new Input();
+    console.log('Input handler created');
     this.levels = [
       {
         platforms: [
@@ -2166,7 +2213,10 @@ class Game {
     this.arrows = [];
     this.asteroids = [];
     this.lasers = [];
+    this.frameCount = 0; // Debug frame counter
+    console.log('Starting game loop...');
     requestAnimationFrame(this.loop);
+    console.log('Game constructor completed successfully');
   }
 
   loadLevel(levelIdx) {
@@ -2174,14 +2224,33 @@ class Game {
     this.platforms = level.platforms.map(p => new Platform(p.x, p.y, p.width, p.height));
     this.hazards = level.hazards.map(h => new Hazard(h.x, h.y, h.width, h.height));
     this.ladders = level.ladders ? level.ladders.map(l => new Ladder(l.x, l.y, l.width, l.height)) : [];
+    
+    // Clear all projectiles and effects when loading new level
+    this.shockwaves = [];
+    this.fireballs = [];
+    this.iceShards = [];
+    this.healingWaves = [];
+    this.explosions = [];
+    this.arrows = [];
+    this.asteroids = [];
+    this.lasers = [];
+    
   this.enemies = level.enemies.map(e => {
     if (e.superBoss) {
+      console.log('Creating SuperBoss at', e.x, e.y);
       return new SuperBoss(e.x, e.y);
     } else if (e.boss) {
+      console.log('Creating BossEnemy at', e.x, e.y);
       return new BossEnemy(e.x, e.y);
     } else {
+      console.log('Creating Enemy at', e.x, e.y);
       return new Enemy(e.x, e.y);
     }
+  });
+  
+  console.log('Level', levelIdx, 'loaded with', this.enemies.length, 'enemies');
+  this.enemies.forEach((enemy, i) => {
+    console.log('Enemy', i, ':', enemy.constructor.name, 'at', enemy.x, enemy.y, 'size:', enemy.width + 'x' + enemy.height);
   });
     
     // Set hearts based on level: Level 1 = 5 hearts, Level 2 = 10 hearts, Level 3 = 15 hearts, Level 4 = 20 hearts
@@ -2220,6 +2289,9 @@ class Game {
       // Update hearts when progressing to a new level
       this.player.hearts = heartsForLevel;
       this.player.maxHearts = heartsForLevel;
+      // Reset power-ups to avoid speed issues
+      this.player.powerUp = null;
+      this.player.powerUpTimer = 0;
     }
     this.levelComplete = false;
     this.gameOver = false;
@@ -2322,20 +2394,29 @@ class Game {
         this.paused = !this.paused;
       }
       if (e.code === 'KeyN' && this.levelComplete && this.currentLevel < this.levels.length - 1) {
-        console.log('Debug: currentLevel=', this.currentLevel, 'levels.length=', this.levels.length);
-  this.currentLevel++;
-  // Hearts will be set automatically by loadLevel based on the new level
-  this.player.ammo = this.player.maxAmmo; // Fully restore ammo
-  this.loadLevel(this.currentLevel);
-  this.levelComplete = false;
-  this.gameOver = false;
-  requestAnimationFrame(this.loop);
-      } else if (e.code === 'KeyN') {
-        console.log('Debug: N pressed but conditions not met - levelComplete:', this.levelComplete, 'currentLevel:', this.currentLevel, 'levels.length:', this.levels.length);
+        this.currentLevel++;
+        // Hearts will be set automatically by loadLevel based on the new level
+        this.player.ammo = this.player.maxAmmo; // Fully restore ammo
+        this.loadLevel(this.currentLevel);
+        this.levelComplete = false;
+        this.gameOver = false;
+        requestAnimationFrame(this.loop);
+      }
+      // DEBUG: Force Level 4 with KeyM
+      if (e.code === 'KeyM') {
+        console.log('Forcing Level 4...');
+        this.currentLevel = 3;
+        this.player.ammo = this.player.maxAmmo;
+        this.loadLevel(3);
+        this.levelComplete = false;
+        this.gameOver = false;
+        requestAnimationFrame(this.loop);
       }
     });
   }
   loop() {
+    this.frameCount++;
+    
     if (this.paused) {
       this.drawPause();
       requestAnimationFrame(this.loop);
@@ -2486,17 +2567,20 @@ class Game {
     
     // Level complete condition
     if (this.currentLevel >= 2) { // Boss levels (Level 3 and 4)
-      // Level completes when all boss enemies are defeated
-      let bossEnemies = this.enemies.filter(e => e instanceof BossEnemy || e instanceof SuperBoss);
-      console.log('Debug: Level', this.currentLevel + 1, 'boss enemies remaining:', bossEnemies.length);
-      if (bossEnemies.length === 0) {
+      // Level completes when all boss-type enemies are defeated
+      let remainingBosses = this.enemies.filter(e => 
+        e.constructor.name === 'BossEnemy' || e.constructor.name === 'SuperBoss'
+      );
+      console.log('Boss level check - Remaining bosses:', remainingBosses.length, 'Total enemies:', this.enemies.length);
+      if (remainingBosses.length === 0) {
         this.levelComplete = true;
-        console.log('Debug: Level completed!');
+        console.log('Level', this.currentLevel + 1, 'completed!');
       }
     } else {
       // Regular levels complete when all enemies are defeated
       if (this.enemies.length === 0) {
         this.levelComplete = true;
+        console.log('Level', this.currentLevel + 1, 'completed!');
       }
     }
     // Game over
@@ -2594,5 +2678,69 @@ class Game {
 
 // --- Start Game ---
 window.onload = () => {
-  window.game = new Game();
+  console.log('Starting game initialization...');
+  
+  // Create debug display
+  const debugDiv = document.createElement('div');
+  debugDiv.id = 'debug-info';
+  debugDiv.style.position = 'fixed';
+  debugDiv.style.top = '10px';
+  debugDiv.style.left = '10px';
+  debugDiv.style.background = 'rgba(0,0,0,0.8)';
+  debugDiv.style.color = 'white';
+  debugDiv.style.padding = '10px';
+  debugDiv.style.fontFamily = 'monospace';
+  debugDiv.style.fontSize = '12px';
+  debugDiv.style.zIndex = '9999';
+  debugDiv.style.maxWidth = '300px';
+  document.body.appendChild(debugDiv);
+  
+  function debug(message) {
+    console.log(message);
+    debugDiv.innerHTML += message + '<br>';
+  }
+  
+  // Capture console logs
+  const originalLog = console.log;
+  console.log = function(...args) {
+    originalLog.apply(console, args);
+    debugDiv.innerHTML += args.join(' ') + '<br>';
+  };
+  
+  debug('Starting game initialization...');
+  
+  try {
+    window.game = new Game();
+    debug('Game created successfully');
+    
+    // Check if game loop is running
+    setTimeout(() => {
+      if (window.game && window.game.player) {
+        debug('Game loop running - Player exists');
+        debug('Current level: ' + window.game.currentLevel + ' (out of ' + (window.game.levels.length - 1) + ')');
+        debug('Player position: ' + Math.round(window.game.player.x) + ', ' + Math.round(window.game.player.y));
+        debug('Canvas size: ' + window.game.canvas.width + 'x' + window.game.canvas.height);
+        debug('Frame count: ' + window.game.frameCount);
+        debug('Game paused: ' + window.game.paused);
+        debug('Game over: ' + window.game.gameOver);
+        debug('Level complete: ' + window.game.levelComplete);
+        debug('Enemies alive: ' + window.game.enemies.length);
+        
+        // Force show Level 4 for testing
+        if (window.game.currentLevel < 3) {
+          debug('FORCING LEVEL 4 for testing...');
+          window.game.currentLevel = 3;
+          window.game.loadLevel(3);
+          debug('Level 4 loaded - Enemies: ' + window.game.enemies.length);
+        }
+      } else {
+        debug('ERROR: Game loop not running or player missing');
+      }
+    }, 1000);
+    
+  } catch (error) {
+    debug('Error creating game: ' + error.message);
+    debug('Stack: ' + error.stack);
+    console.error('Error creating game:', error);
+  }
 };
