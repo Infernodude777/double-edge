@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Test</title>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600" style="border: 1px solid black;"></canvas>
+    
+    <div>
+        <p><strong>Quick Cutscene Tests:</strong></p>
+        <button onclick="directCutscene()" style="background: red; color: white; font-size: 18px;">🔥 INSTANT CUTSCENE</button>
+        <button onclick="setupLevel2AndAdvance()" style="background: blue; color: white; font-size: 18px;">⚔️ AUTO LEVEL 2→3</button>
+        <br><br>
+        
+        <p><strong>Manual Tests:</strong></p>
+        <p>Press <strong>T</strong> in game = Instant cutscene</p>
+        <p>Press <strong>Y</strong> in game = Setup Level 2 complete</p>
+        <br>
+        
+        <p><strong>Game State:</strong></p>
+        <p>🎮 <strong>Level:</strong> <span id="currentLevel">-</span></p>
+        <p>✅ <strong>Level Complete:</strong> <span id="levelComplete">-</span></p>  
+        <p>🎬 <strong>In Cutscene:</strong> <span id="inCutscene">-</span></p>
+        <p>🎭 <strong>Cutscene State:</strong> <span id="cutsceneState">-</span></p>
+        <p>👹 <strong>Enemies:</strong> <span id="enemyCount">-</span></p>
+        <br>
+        
+        <div style="background: #000; color: #0f0; padding: 15px; border: 2px solid #0f0; font-family: monospace; height: 150px; overflow-y: scroll; font-size: 14px;" id="console"></div>
+    </div>
+    
+    <script src="game.js"></script>
+    <script>
+        function updateUI() {
+            if (window.game) {
+                document.getElementById('currentLevel').textContent = (window.game.currentLevel || 0) + 1;
+                document.getElementById('levelComplete').textContent = window.game.levelComplete ? 'YES' : 'NO';
+                document.getElementById('inCutscene').textContent = window.game.inCutscene ? 'YES' : 'NO';
+                document.getElementById('cutsceneState').textContent = window.game.cutsceneState || 'none';
+                document.getElementById('enemyCount').textContent = window.game.enemies ? window.game.enemies.length : 'N/A';
+            } else {
+                document.getElementById('currentLevel').textContent = 'Loading...';
+                document.getElementById('levelComplete').textContent = '-';
+                document.getElementById('inCutscene').textContent = '-';
+                document.getElementById('cutsceneState').textContent = '-';
+                document.getElementById('enemyCount').textContent = '-';
+            }
+        }
+        
+        function log(message) {
+            const consoleDiv = document.getElementById('console');
+            const time = new Date().toLocaleTimeString();
+            consoleDiv.innerHTML += `[${time}] ${message}<br>`;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+        
+        // Override console.log to show in our div
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            log(args.join(' '));
+        };
+        
+        function directCutscene() {
+            if (window.game) {
+                log('🔥 DIRECT CUTSCENE TRIGGER');
+                window.game.inCutscene = true;
+                window.game.cutsceneState = 'altar-walking';
+                window.game.cutsceneTimer = 0;
+                window.game.altarPlayerX = -100;
+                window.game.dialogueIndex = 0;
+                window.game.levelComplete = false; // Turn off level complete screen
+                log('✅ Cutscene active: ' + window.game.inCutscene);
+                updateUI();
+            } else {
+                log('❌ Game not loaded yet!');
+            }
+        }
+        
+        function setupLevel2AndAdvance() {
+            if (window.game) {
+                log('⚔️ AUTO SETUP: Level 2 → Cutscene → Level 3');
+                
+                // Step 1: Setup Level 2 completion
+                window.game.currentLevel = 1; // Level 2
+                window.game.enemies = [];     // Clear enemies
+                window.game.levelComplete = true;
+                log('📍 Step 1: Level 2 completed');
+                
+                // Step 2: Wait a moment then trigger cutscene
+                setTimeout(() => {
+                    log('📍 Step 2: Triggering cutscene automatically');
+                    window.game.inCutscene = true;
+                    window.game.cutsceneState = 'altar-walking';
+                    window.game.cutsceneTimer = 0;
+                    window.game.altarPlayerX = -100;
+                    window.game.dialogueIndex = 0;
+                    window.game.levelComplete = false;
+                    updateUI();
+                }, 1000);
+                
+                updateUI();
+            } else {
+                log('❌ Game not loaded yet!');
+            }
+        }
+        
+        function triggerCutscene() {
+            directCutscene();
+        }
+        
+        function testLevel2Complete() {
+            if (window.game) {
+                log('Setting up Level 2 completion test');
+                window.game.currentLevel = 1; // Level 2 (0-indexed)
+                window.game.levelComplete = true;
+                window.game.enemies = []; // Clear enemies to complete level
+                updateUI();
+                log('Level 2 setup complete. Press N in game to advance.');
+            } else {
+                log('Game not loaded yet!');
+            }
+        }
+        
+        function clearEnemies() {
+            if (window.game) {
+                window.game.enemies = [];
+                log('All enemies cleared');
+                updateUI();
+            }
+        }
+        
+        // Update UI every second
+        setInterval(updateUI, 1000);
+        
+        // Wait for game to load then update UI
+        setTimeout(updateUI, 2000);
+    </script>
+</body>
+</html>
