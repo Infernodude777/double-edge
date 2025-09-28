@@ -54,6 +54,7 @@ class Player {
     this.ammo = this.maxAmmo;
     this.healingStun = 0; // For healing spell - makes player stationary
     this.spellCooldown = 0; // Cooldown for spellcaster abilities (0.5s = 30 frames)
+    this.healingCooldown = 0; // Separate cooldown for healing spell (10s = 600 frames)
     
     // Casting system
     this.isCasting = false;
@@ -109,7 +110,8 @@ class Player {
     this.scytheIdleImages[1].src = 'assets/player/Scythe Idle/1.png';
     this.scytheIdleImages[2].src = 'assets/player/Scythe Idle/2.png';
     this.scytheIdleImages[3].src = 'assets/player/Scythe Idle/3.png';
-    // Sprite animation for scythe run (used when jumping with scythe)
+    
+    // Sprite animation for scythe run 
     this.scytheRunFrame = 0;
     this.scytheRunFrameCounter = 0;
     this.scytheRunImages = [new Image(), new Image(), new Image(), new Image()];
@@ -126,6 +128,17 @@ class Player {
     this.scytheJumpImages[1].src = 'assets/player/Scythe Jump/1.png';
     this.scytheJumpImages[2].src = 'assets/player/Scythe Jump/2.png';
     this.scytheJumpImages[3].src = 'assets/player/Scythe Jump/3.png';
+    
+    // Sprite animation for scythe attack
+    this.scytheAttackFrame = 0;
+    this.scytheAttackFrameCounter = 0;
+    this.scytheAttackImages = [new Image(), new Image(), new Image(), new Image(), new Image(), new Image()];
+    this.scytheAttackImages[0].src = 'assets/player/Scythe Attack/0.png';
+    this.scytheAttackImages[1].src = 'assets/player/Scythe Attack/1.png';
+    this.scytheAttackImages[2].src = 'assets/player/Scythe Attack/2.png';
+    this.scytheAttackImages[3].src = 'assets/player/Scythe Attack/3.png';
+    this.scytheAttackImages[4].src = 'assets/player/Scythe Attack/4.png';
+    this.scytheAttackImages[5].src = 'assets/player/Scythe Attack/5.png';
     
     // Sprite animation for shockwave idle (spellcaster weapon)
     this.shockwaveIdleFrame = 0;
@@ -161,6 +174,12 @@ class Player {
     this.bowIdleImages[0].src = 'assets/player/Bow Idle/0.png';
     this.bowIdleImages[1].src = 'assets/player/Bow Idle/1.png';
     
+    // Initialize attack animation frame counters
+    this.bowAttackFrame = 0;
+    this.bowAttackFrameCounter = 0;
+    this.shockwaveAttackFrame = 0;
+    this.shockwaveAttackFrameCounter = 0;
+    
     // Sprite animation for bow run
     this.bowRunFrame = 0;
     this.bowRunFrameCounter = 0;
@@ -180,6 +199,30 @@ class Player {
     this.bowJumpImages[1].src = 'assets/player/Bow Jump/1.png';
     this.bowJumpImages[2].src = 'assets/player/Bow Jump/2.png';
     this.bowJumpImages[3].src = 'assets/player/Bow Jump/3.png';
+    
+    // Sprite animation for bow attack (charging)
+    this.bowAttackFrame = 0;
+    this.bowAttackFrameCounter = 0;
+    this.bowAttackImages = [new Image(), new Image(), new Image(), new Image(), new Image(), new Image(), new Image()];
+    this.bowAttackImages[0].src = 'assets/player/Bow Attack/0.png';
+    this.bowAttackImages[1].src = 'assets/player/Bow Attack/1.png';
+    this.bowAttackImages[2].src = 'assets/player/Bow Attack/2.png';
+    this.bowAttackImages[3].src = 'assets/player/Bow Attack/3.png';
+    this.bowAttackImages[4].src = 'assets/player/Bow Attack/4.png';
+    this.bowAttackImages[5].src = 'assets/player/Bow Attack/5.png';
+    this.bowAttackImages[6].src = 'assets/player/Bow Attack/6.png';
+    
+    // Sprite animation for shockwave attack (spellcaster casting)
+    this.shockwaveAttackFrame = 0;
+    this.shockwaveAttackFrameCounter = 0;
+    this.shockwaveAttackImages = [new Image(), new Image(), new Image(), new Image(), new Image(), new Image(), new Image()];
+    this.shockwaveAttackImages[0].src = 'assets/player/Shockwave Attack/0.png';
+    this.shockwaveAttackImages[1].src = 'assets/player/Shockwave Attack/1.png';
+    this.shockwaveAttackImages[2].src = 'assets/player/Shockwave Attack/2.png';
+    this.shockwaveAttackImages[3].src = 'assets/player/Shockwave Attack/3.png';
+    this.shockwaveAttackImages[4].src = 'assets/player/Shockwave Attack/4.png';
+    this.shockwaveAttackImages[5].src = 'assets/player/Shockwave Attack/5.png';
+    this.shockwaveAttackImages[6].src = 'assets/player/Shockwave Attack/6.png';
   }
   
   findNearestPlatformBelow(platforms) {
@@ -379,8 +422,8 @@ class Player {
           playSound('attack');
         }
       }
-    } else {
-      // Normal weapon attack
+    } else if (this.weapon !== 'spellcaster') {
+      // Normal weapon attack (exclude spellcaster - it uses Z/C/R keys instead)
       if (input.isDown('Space') && !this.isAttacking && this.attackCooldown <= 0 && this.ammo > 0) {
         this.isAttacking = true;
         this.attackCooldown = 35; // ~0.58s at 60fps
@@ -430,6 +473,10 @@ class Player {
     if (this.spellCooldown > 0) {
       this.spellCooldown--;
     }
+    // Healing cooldown decrement
+    if (this.healingCooldown > 0) {
+      this.healingCooldown--;
+    }
     
     // Handle casting system
     if (this.isCasting) {
@@ -469,7 +516,32 @@ class Player {
     
     // Determine which animation to use based on weapon and state
     if (this.weapon === 'scythe') {
-      if (!this.onGround) {
+      if (this.isAttacking) {
+        // Use scythe attack animation when attacking with scythe
+        this.scytheAttackFrameCounter++;
+        if (this.scytheAttackFrameCounter > 8) { // Change frame every 8 frames for attack animation
+          this.scytheAttackFrame = (this.scytheAttackFrame + 1) % 6;
+          this.scytheAttackFrameCounter = 0;
+        }
+        img = this.scytheAttackImages[this.scytheAttackFrame];
+        // Reset other animations
+        this.scytheIdleFrameCounter = 0;
+        this.scytheIdleFrame = 0;
+        this.scytheRunFrameCounter = 0;
+        this.scytheRunFrame = 0;
+        this.scytheJumpFrameCounter = 0;
+        this.scytheJumpFrame = 0;
+        this.idleFrameCounter = 0;
+        this.jumpFrameCounter = 0;
+        this.shockwaveIdleFrameCounter = 0;
+        this.shockwaveRunFrameCounter = 0;
+        this.shockwaveJumpFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+        this.bowIdleFrameCounter = 0;
+        this.bowRunFrameCounter = 0;
+        this.bowJumpFrameCounter = 0;
+      } else if (!this.onGround) {
         // Use scythe jump animation when jumping with scythe
         this.scytheJumpFrameCounter++;
         if (this.scytheJumpFrameCounter > 12) { // Change frame every 12 frames (0.2s at 60fps)
@@ -541,7 +613,33 @@ class Player {
       }
     } else if (this.weapon === 'spellcaster') {
       // Spellcaster weapon uses shockwave animations
-      if (!this.onGround) {
+      if (this.isCasting) {
+        // Use shockwave attack animation when casting spells
+        this.shockwaveAttackFrameCounter++;
+        if (this.shockwaveAttackFrameCounter > 8) { // Change frame every 8 frames for attack animation
+          if (this.shockwaveAttackFrame < 6) { // Only advance if not at last frame
+            this.shockwaveAttackFrame++;
+          }
+          this.shockwaveAttackFrameCounter = 0;
+        }
+        img = this.shockwaveAttackImages[this.shockwaveAttackFrame];
+        // Reset other animations
+        this.shockwaveIdleFrameCounter = 0;
+        this.shockwaveIdleFrame = 0;
+        this.shockwaveRunFrameCounter = 0;
+        this.shockwaveRunFrame = 0;
+        this.shockwaveJumpFrameCounter = 0;
+        this.idleFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+        this.bowIdleFrameCounter = 0;
+        this.bowRunFrameCounter = 0;
+        this.bowJumpFrameCounter = 0;
+        this.bowAttackFrameCounter = 0;
+        this.bowAttackFrame = 0;
+        this.shockwaveAttackFrameCounter = 0;
+        this.shockwaveAttackFrame = 0;
+      } else if (!this.onGround) {
         // Use shockwave jump animation when jumping with spellcaster
         this.shockwaveJumpFrameCounter++;
         if (this.shockwaveJumpFrameCounter > 12) { // Change frame every 12 frames (0.2s at 60fps)
@@ -601,7 +699,24 @@ class Player {
       }
     } else if (this.weapon === 'bow') {
       // Bow weapon uses bow animations
-      if (!this.onGround) {
+      if (this.isChargingBow) {
+        // Use bow attack animation when charging bow
+        this.bowAttackFrameCounter++;
+        if (this.bowAttackFrameCounter > 8) { // Change frame every 8 frames for attack animation
+          this.bowAttackFrame = (this.bowAttackFrame + 1) % 7;
+          this.bowAttackFrameCounter = 0;
+        }
+        img = this.bowAttackImages[this.bowAttackFrame];
+        // Reset other animations
+        this.bowIdleFrameCounter = 0;
+        this.bowIdleFrame = 0;
+        this.bowRunFrameCounter = 0;
+        this.bowRunFrame = 0;
+        this.bowJumpFrameCounter = 0;
+        this.idleFrameCounter = 0;
+        this.attackFrameCounter = 0;
+        this.attackFrame = 0;
+      } else if (!this.onGround) {
         // Use bow jump animation when jumping with bow
         this.bowJumpFrameCounter++;
         if (this.bowJumpFrameCounter > 12) { // Change frame every 12 frames (0.2s at 60fps)
@@ -763,21 +878,16 @@ class Player {
     }
     // Weapon placeholder
     if (this.attackAnimFrames > 0) {
-      if (this.weapon === 'scythe') {
-        ctx.fillStyle = '#fff';
-        let offsetScythe = this.facing === 'right' ? this.x + this.width : this.x - 72;
-        ctx.fillRect(offsetScythe, this.y + 4, 72, 16); // much wider and taller
-      } else {
-        ctx.fillStyle = '#fff';
-        let offsetX = this.facing === 'right' ? this.x + this.width : this.x - 16;
-        let offsetAxe = this.facing === 'right' ? this.x + this.width : this.x - 20;
-        let offsetSpear = this.facing === 'right' ? this.x + this.width : this.x - 24;
-        let offsetBow = this.facing === 'right' ? this.x + this.width : this.x - 16;
-        // Sword placeholder removed - Normal Attack animation already shows sword
-        if (this.weapon === 'axe') ctx.fillRect(offsetAxe, this.y + 12, 20, 12);
-        if (this.weapon === 'spear') ctx.fillRect(offsetSpear, this.y + 20, 24, 4);
-        if (this.weapon === 'bow') ctx.fillRect(offsetBow, this.y + 24, 16, 4);
-      }
+      ctx.fillStyle = '#fff';
+      let offsetX = this.facing === 'right' ? this.x + this.width : this.x - 16;
+      let offsetAxe = this.facing === 'right' ? this.x + this.width : this.x - 20;
+      let offsetSpear = this.facing === 'right' ? this.x + this.width : this.x - 24;
+      let offsetBow = this.facing === 'right' ? this.x + this.width : this.x - 16;
+      // Sword placeholder removed - Normal Attack animation already shows sword
+      // Scythe placeholder removed - Scythe Attack animation already shows scythe
+      if (this.weapon === 'axe') ctx.fillRect(offsetAxe, this.y + 12, 20, 12);
+      if (this.weapon === 'spear') ctx.fillRect(offsetSpear, this.y + 20, 24, 4);
+      if (this.weapon === 'bow') ctx.fillRect(offsetBow, this.y + 24, 16, 4);
     }
     
     // Bow charging and aiming indicator
@@ -973,8 +1083,8 @@ class Enemy {
            this.y < obj.y + obj.height && this.y + this.height > obj.y;
   }
   attackedBy(player) {
-    // Attack hitbox based on facing
-    if (!player.isAttacking) return false;
+    // Attack hitbox based on facing (spellcaster has no melee attack)
+    if (!player.isAttacking || player.weapon === 'spellcaster') return false;
     let hitbox = {
       x: player.facing === 'right' ? player.x + player.width : player.x - (player.weapon === 'scythe' ? 72 : 40),
       y: player.weapon === 'scythe' ? player.y + 4 : player.y + 12,
@@ -1067,6 +1177,184 @@ class BossEnemy extends Enemy {
         ctx.restore();
       }
     }
+    ctx.restore();
+  }
+}
+
+// --- SuperBoss Class (Level 4) ---
+class SuperBoss extends BossEnemy {
+  constructor(x, y) {
+    super(x, y);
+    this.width = 120;
+    this.height = 120;
+    this.color = '#8A2BE2'; // Blue violet
+    this.health = 50;
+    this.maxHealth = 50;
+    
+    // Attack patterns and timers
+    this.asteroidCooldown = 0;
+    this.asteroidAttackRate = 240; // 4 seconds
+    this.laserCooldown = 0;
+    this.laserAttackRate = 180; // 3 seconds
+    this.minionCooldown = 0;
+    this.minionSpawnRate = 300; // 5 seconds
+    
+    // Attack pattern cycling
+    this.attackPattern = 0; // 0: asteroids, 1: lasers, 2: minions
+    this.patternTimer = 0;
+    this.patternDuration = 360; // 6 seconds per pattern
+  }
+  
+  update(player, platforms, ladders, game) {
+    if (this.stunned > 0) {
+      this.stunned--;
+      return;
+    }
+    
+    // Don't attack if dead
+    if (this.isDead()) {
+      return;
+    }
+    
+    // Movement - slower and more deliberate
+    if (player.x < this.x) this.x -= 0.5;
+    else if (player.x > this.x) this.x += 0.5;
+    
+    // Gravity
+    this.vy += 0.4;
+    this.y += this.vy;
+    
+    // Platform collision
+    for (let platform of platforms) {
+      if (this.x < platform.x + platform.width && this.x + this.width > platform.x &&
+          this.y < platform.y + platform.height && this.y + this.height > platform.y) {
+        if (this.vy > 0 && this.y < platform.y) {
+          this.y = platform.y - this.height;
+          this.vy = 0;
+        }
+      }
+    }
+    
+    // Update attack pattern
+    this.patternTimer++;
+    if (this.patternTimer >= this.patternDuration) {
+      this.attackPattern = (this.attackPattern + 1) % 3;
+      this.patternTimer = 0;
+    }
+    
+    // Execute attacks based on current pattern
+    switch (this.attackPattern) {
+      case 0: // Asteroid attacks
+        this.asteroidCooldown--;
+        if (this.asteroidCooldown <= 0) {
+          this.summonAsteroid(player, game);
+          this.asteroidCooldown = this.asteroidAttackRate;
+        }
+        break;
+        
+      case 1: // Laser attacks
+        this.laserCooldown--;
+        if (this.laserCooldown <= 0) {
+          this.fireLaser(game);
+          this.laserCooldown = this.laserAttackRate;
+        }
+        break;
+        
+      case 2: // Minion spawning
+        this.minionCooldown--;
+        if (this.minionCooldown <= 0) {
+          this.spawnMinion(game);
+          this.minionCooldown = this.minionSpawnRate;
+        }
+        break;
+    }
+    
+    // Take damage from player
+    if (this.attackedBy(player) && !player._attackHit) {
+      let dmg = player.powerUp === 'damage' ? 3 : 2;
+      this.takeDamage(dmg);
+      player._attackHit = true;
+    }
+  }
+  
+  summonAsteroid(player, game) {
+    // Create asteroid aimed at player's current position
+    let asteroid = new Asteroid(this.x + this.width/2, player.x, player.y);
+    game.asteroids.push(asteroid);
+  }
+  
+  fireLaser(game) {
+    // Fire random scanning laser
+    let direction = Math.random() < 0.5 ? 'horizontal' : 'vertical';
+    let x = direction === 'horizontal' ? -50 : Math.random() * 750;
+    let y = direction === 'horizontal' ? Math.random() * 550 : -50;
+    
+    let laser = new Laser(x, y, direction);
+    game.lasers.push(laser);
+  }
+  
+  spawnMinion(game) {
+    // Spawn weaker enemy near the boss
+    let minionX = this.x + (Math.random() < 0.5 ? -60 : this.width + 20);
+    let minionY = this.y;
+    
+    let minion = new Enemy(minionX, minionY);
+    minion.health = 2; // Weaker than normal enemies
+    minion.color = '#9370DB'; // Medium slate blue (related to boss color)
+    game.enemies.push(minion);
+  }
+  
+  draw(ctx) {
+    ctx.save();
+    
+    // Pulsing effect based on health
+    let healthPercent = this.health / this.maxHealth;
+    let pulse = Math.sin(Date.now() * 0.01) * 0.3 + 0.7;
+    ctx.globalAlpha = healthPercent * pulse;
+    
+    // Draw boss body with gradient effect
+    let gradient = ctx.createRadialGradient(
+      this.x + this.width/2, this.y + this.height/2, 0,
+      this.x + this.width/2, this.y + this.height/2, this.width/2
+    );
+    gradient.addColorStop(0, '#9932CC'); // Dark orchid
+    gradient.addColorStop(1, this.color);
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+    
+    // Attack pattern indicator
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '12px "Press Start 2P"';
+    let patternText = ['ASTEROID', 'LASER', 'MINION'][this.attackPattern];
+    ctx.fillText(patternText, this.x, this.y - 10);
+    
+    // Health bar
+    let healthBarWidth = this.width;
+    let healthBarHeight = 8;
+    let healthBarY = this.y - 20;
+    
+    ctx.fillStyle = '#222';
+    ctx.fillRect(this.x, healthBarY, healthBarWidth, healthBarHeight);
+    ctx.fillStyle = healthPercent > 0.5 ? '#0f0' : healthPercent > 0.25 ? '#ff0' : '#f00';
+    ctx.fillRect(this.x, healthBarY, healthBarWidth * healthPercent, healthBarHeight);
+    
+    // Stunned sparkles
+    if (this.stunned > 0) {
+      for (let i = 0; i < 20; i++) {
+        let angle = (Math.PI * 2 * i) / 20;
+        let sx = this.x + this.width / 2 + Math.cos(angle) * 60;
+        let sy = this.y + this.height / 2 + Math.sin(angle) * 60;
+        ctx.save();
+        ctx.globalAlpha = 0.8 * (this.stunned / 30);
+        ctx.fillStyle = ['#fff', '#ff0', '#0ff', '#f0f', '#8A2BE2'][i % 5];
+        ctx.beginPath();
+        ctx.arc(sx, sy, 6 + Math.random() * 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    
     ctx.restore();
   }
 }
@@ -1584,6 +1872,144 @@ class Arrow {
   }
 }
 
+// --- Asteroid Class ---
+class Asteroid {
+  constructor(targetX, targetY) {
+    this.x = targetX; // Start at boss X coordinate
+    this.y = -50; // Start above screen
+    
+    // Random size affects speed
+    this.sizeType = Math.random() < 0.5 ? 'medium' : 'large';
+    this.size = this.sizeType === 'medium' ? 20 : 35;
+    this.width = this.size;
+    this.height = this.size;
+    
+    // Speed based on size (smaller = faster)
+    this.baseSpeed = this.sizeType === 'medium' ? 6 : 3;
+    
+    // Calculate direction to player position when summoned
+    let dx = targetX - this.x;
+    let dy = targetY - this.y;
+    let distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // Normalize direction and apply speed
+    this.vx = (dx / distance) * this.baseSpeed * 0.3; // Horizontal component
+    this.vy = this.baseSpeed; // Mainly downward movement
+    
+    this.damage = this.sizeType === 'medium' ? 2 : 3;
+    this.rotation = 0;
+    this.rotationSpeed = 0.1;
+    this.lifetime = 600; // 10 seconds max
+  }
+  
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.rotation += this.rotationSpeed;
+    this.lifetime--;
+  }
+  
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x + this.width/2, this.y + this.height/2);
+    ctx.rotate(this.rotation);
+    
+    // Draw pixelated asteroid
+    ctx.fillStyle = '#8B4513'; // Brown/rocky color
+    ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+    
+    // Add some detail for pixelated look
+    ctx.fillStyle = '#654321'; // Darker brown details
+    let detail = this.size / 5;
+    ctx.fillRect(-this.width/2 + detail, -this.height/2 + detail, detail, detail);
+    ctx.fillRect(this.width/2 - detail*2, -this.height/2 + detail*2, detail, detail);
+    ctx.fillRect(-this.width/2 + detail*2, this.height/2 - detail*2, detail, detail);
+    
+    ctx.restore();
+  }
+  
+  isDone() {
+    return this.lifetime <= 0 || this.y > 650; // Off screen or expired
+  }
+  
+  collidesWith(obj) {
+    return this.x < obj.x + obj.width && this.x + this.width > obj.x &&
+           this.y < obj.y + obj.height && this.y + this.height > obj.y;
+  }
+}
+
+// --- Laser Class ---
+class Laser {
+  constructor(startX, startY, direction) {
+    this.x = startX;
+    this.y = startY;
+    this.width = 8;
+    this.height = 400; // Long scanning beam
+    this.direction = direction; // 'horizontal' or 'vertical'
+    
+    if (this.direction === 'horizontal') {
+      this.width = 400;
+      this.height = 8;
+      this.vx = (Math.random() < 0.5 ? -1 : 1) * 2; // Random horizontal movement
+      this.vy = 0;
+    } else {
+      this.vx = 0;
+      this.vy = (Math.random() < 0.5 ? -1 : 1) * 2; // Random vertical movement
+    }
+    
+    this.damage = 2;
+    this.lifetime = 180; // 3 seconds
+    this.opacity = 1.0;
+    this.flashTimer = 0;
+  }
+  
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.lifetime--;
+    
+    // Fade out near end of lifetime
+    if (this.lifetime < 60) {
+      this.opacity = this.lifetime / 60;
+    }
+    
+    // Flash effect
+    this.flashTimer++;
+    if (this.flashTimer > 10) {
+      this.flashTimer = 0;
+    }
+  }
+  
+  draw(ctx) {
+    ctx.save();
+    ctx.globalAlpha = this.opacity;
+    
+    // Main laser beam
+    ctx.fillStyle = this.flashTimer < 5 ? '#FF0000' : '#FF6666'; // Red flashing
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+    
+    // Inner bright core
+    let coreOffset = 2;
+    ctx.fillStyle = '#FFFFFF';
+    if (this.direction === 'horizontal') {
+      ctx.fillRect(this.x + coreOffset, this.y + coreOffset, this.width - coreOffset*2, this.height - coreOffset*2);
+    } else {
+      ctx.fillRect(this.x + coreOffset, this.y + coreOffset, this.width - coreOffset*2, this.height - coreOffset*2);
+    }
+    
+    ctx.restore();
+  }
+  
+  isDone() {
+    return this.lifetime <= 0;
+  }
+  
+  collidesWith(obj) {
+    return this.x < obj.x + obj.width && this.x + this.width > obj.x &&
+           this.y < obj.y + obj.height && this.y + this.height > obj.y;
+  }
+}
+
 // --- PowerUp System ---
 const POWERUPS = ['damage', 'speed', 'shield', 'shockwave'];
 function getRandomPowerUp() {
@@ -1602,7 +2028,7 @@ class UI {
     // Hearts
     let heartsHTML = '';
     for (let i = 0; i < this.player.maxHearts; i++) {
-      heartsHTML += `<span style="color:${i < this.player.hearts ? '#f00' : '#444'};font-size:24px;">&#10084;</span> `;
+      heartsHTML += `<span style="color:${i < this.player.hearts ? '#f00' : '#444'};font-size:36px;font-family:'Press Start 2P','Courier New',monospace;">&#10084;</span> `;
     }
     this.heartsDiv.innerHTML = heartsHTML;
     // Energy bar
@@ -1630,6 +2056,9 @@ class UI {
     } else if (this.player.powerUpCooldown > 0) {
       let cd = Math.ceil(this.player.powerUpCooldown / 60);
       this.powerupDiv.innerHTML = `Power-Up Cooldown: <b>${cd}s</b>`;
+    } else if (this.player.healingCooldown > 0 && this.player.weapon === 'spellcaster') {
+      let cd = Math.ceil(this.player.healingCooldown / 60);
+      this.powerupDiv.innerHTML = `Heal Cooldown: <b>${cd}s</b>`;
     } else {
       this.powerupDiv.innerHTML = '';
     }
@@ -1696,6 +2125,27 @@ class Game {
             { boss: true, x: 600, y: 470 }
           ],
           playerStart: { x: 100, y: 500 }
+        },
+        // Level 4: Super Boss Level with 3 SuperBosses
+        {
+          platforms: [
+            new Platform(0, 550, 800, 50),
+            new Platform(150, 450, 100, 20),
+            new Platform(350, 350, 100, 20),
+            new Platform(550, 450, 100, 20),
+            new Platform(250, 250, 120, 20),
+            new Platform(450, 150, 120, 20)
+          ],
+          hazards: [
+            new Hazard(300, 530, 40, 20),
+            new Hazard(460, 530, 40, 20)
+          ],
+          enemies: [
+            { superBoss: true, x: 200, y: 420 },
+            { superBoss: true, x: 400, y: 320 },
+            { superBoss: true, x: 600, y: 420 }
+          ],
+          playerStart: { x: 50, y: 500 }
         }
     ];
     this.currentLevel = 0;
@@ -1714,6 +2164,8 @@ class Game {
     this.healingWaves = [];
     this.explosions = [];
     this.arrows = [];
+    this.asteroids = [];
+    this.lasers = [];
     requestAnimationFrame(this.loop);
   }
 
@@ -1722,9 +2174,17 @@ class Game {
     this.platforms = level.platforms.map(p => new Platform(p.x, p.y, p.width, p.height));
     this.hazards = level.hazards.map(h => new Hazard(h.x, h.y, h.width, h.height));
     this.ladders = level.ladders ? level.ladders.map(l => new Ladder(l.x, l.y, l.width, l.height)) : [];
-  this.enemies = level.enemies.map(e => e.boss ? new BossEnemy(e.x, e.y) : new Enemy(e.x, e.y));
+  this.enemies = level.enemies.map(e => {
+    if (e.superBoss) {
+      return new SuperBoss(e.x, e.y);
+    } else if (e.boss) {
+      return new BossEnemy(e.x, e.y);
+    } else {
+      return new Enemy(e.x, e.y);
+    }
+  });
     
-    // Set hearts based on level: Level 1 = 5 hearts, Level 2 = 10 hearts, Level 3 = 15 hearts
+    // Set hearts based on level: Level 1 = 5 hearts, Level 2 = 10 hearts, Level 3 = 15 hearts, Level 4 = 20 hearts
     let heartsForLevel;
     switch (levelIdx) {
       case 0: // Level 1
@@ -1735,6 +2195,9 @@ class Game {
         break;
       case 2: // Level 3
         heartsForLevel = 15;
+        break;
+      case 3: // Level 4
+        heartsForLevel = 20;
         break;
       default: // Any additional levels default to 5 hearts
         heartsForLevel = 5;
@@ -1823,6 +2286,8 @@ class Game {
             this.player.castingTimer = 0;
             this.player.castingSpell = 'fireball';
             this.player.spellCooldown = 30; // 0.5 seconds at 60fps
+            this.player.shockwaveAttackFrame = 0; // Reset animation
+            this.player.shockwaveAttackFrameCounter = 0;
           }
         }
         
@@ -1834,16 +2299,21 @@ class Game {
             this.player.castingTimer = 0;
             this.player.castingSpell = 'iceShard';
             this.player.spellCooldown = 30; // 0.5 seconds at 60fps
+            this.player.shockwaveAttackFrame = 0; // Reset animation
+            this.player.shockwaveAttackFrameCounter = 0;
           }
         }
         
         if (e.code === 'KeyR') {
-          // Start healing wave casting
-          if (this.player.healingStun <= 0) {
+          // Start healing wave casting (with 10-second cooldown)
+          if (this.player.healingStun <= 0 && this.player.healingCooldown <= 0) {
             this.player.isCasting = true;
             this.player.castingTimer = 0;
             this.player.castingSpell = 'healingWave';
             this.player.spellCooldown = 30; // 0.5 seconds at 60fps
+            this.player.healingCooldown = 600; // 10 seconds at 60fps
+            this.player.shockwaveAttackFrame = 0; // Reset animation
+            this.player.shockwaveAttackFrameCounter = 0;
           }
         }
       }
@@ -1852,6 +2322,7 @@ class Game {
         this.paused = !this.paused;
       }
       if (e.code === 'KeyN' && this.levelComplete && this.currentLevel < this.levels.length - 1) {
+        console.log('Debug: currentLevel=', this.currentLevel, 'levels.length=', this.levels.length);
   this.currentLevel++;
   // Hearts will be set automatically by loadLevel based on the new level
   this.player.ammo = this.player.maxAmmo; // Fully restore ammo
@@ -1859,6 +2330,8 @@ class Game {
   this.levelComplete = false;
   this.gameOver = false;
   requestAnimationFrame(this.loop);
+      } else if (e.code === 'KeyN') {
+        console.log('Debug: N pressed but conditions not met - levelComplete:', this.levelComplete, 'currentLevel:', this.currentLevel, 'levels.length:', this.levels.length);
       }
     });
   }
@@ -1910,7 +2383,7 @@ class Game {
     
     let killedThisFrame = 0;
     for (let enemy of this.enemies) {
-      if (enemy instanceof BossEnemy) {
+      if (enemy instanceof BossEnemy || enemy instanceof SuperBoss) {
         enemy.update(this.player, this.platforms, this.ladders, this);
       } else {
         enemy.update(this.player, this.platforms, this.ladders);
@@ -1921,10 +2394,12 @@ class Game {
         enemy.takeDamage(dmg);
         this.player._attackHit = true;
         
-        // Set attack momentum for forward movement
-        let kb = this.player.facing === 'right' ? 10 : -10;
-        this.player.attackMomentum = kb;
-        this.player.attackMomentumTimer = 8; // 8 frames of momentum (about 0.13 seconds at 60fps)
+        // Set attack momentum for forward movement (sword only)
+        if (this.player.weapon === 'sword') {
+          let kb = this.player.facing === 'right' ? 10 : -10;
+          this.player.attackMomentum = kb;
+          this.player.attackMomentumTimer = 8; // 8 frames of momentum (about 0.13 seconds at 60fps)
+        }
       }
       if (enemy.isDead()) {
         killedThisFrame++;
@@ -1987,9 +2462,42 @@ class Game {
       return !explosion.isDone();
     });
     
+    // Update asteroids
+    this.asteroids = this.asteroids.filter(asteroid => {
+      asteroid.update(this.platforms);
+      // Check collision with player
+      if (asteroid.collides(this.player)) {
+        this.player.takeDamage(2); // Asteroids deal 2 damage
+        return false; // Remove asteroid after hit
+      }
+      return !asteroid.isDone();
+    });
+    
+    // Update lasers
+    this.lasers = this.lasers.filter(laser => {
+      laser.update();
+      // Check collision with player
+      if (laser.collides(this.player)) {
+        this.player.takeDamage(3); // Lasers deal 3 damage
+        return false; // Remove laser after hit
+      }
+      return !laser.isDone();
+    });
+    
     // Level complete condition
-    if (this.enemies.length === 0) {
-      this.levelComplete = true;
+    if (this.currentLevel >= 2) { // Boss levels (Level 3 and 4)
+      // Level completes when all boss enemies are defeated
+      let bossEnemies = this.enemies.filter(e => e instanceof BossEnemy || e instanceof SuperBoss);
+      console.log('Debug: Level', this.currentLevel + 1, 'boss enemies remaining:', bossEnemies.length);
+      if (bossEnemies.length === 0) {
+        this.levelComplete = true;
+        console.log('Debug: Level completed!');
+      }
+    } else {
+      // Regular levels complete when all enemies are defeated
+      if (this.enemies.length === 0) {
+        this.levelComplete = true;
+      }
     }
     // Game over
     if (this.player.hearts <= 0) {
@@ -2013,6 +2521,10 @@ class Game {
     for (let arrow of this.arrows) arrow.draw(this.ctx);
     // Explosions
     for (let explosion of this.explosions) explosion.draw(this.ctx);
+    // Asteroids
+    for (let asteroid of this.asteroids) asteroid.draw(this.ctx);
+    // Lasers
+    for (let laser of this.lasers) laser.draw(this.ctx);
     // Platforms
     for (let p of this.platforms) p.draw(this.ctx);
     // Hazards
@@ -2024,15 +2536,24 @@ class Game {
     // Player
     this.player.draw(this.ctx);
   }
+  setupPixelArtText(size = 48, color = '#fff') {
+    this.ctx.font = `${size}px "Press Start 2P", "Courier New", monospace`;
+    this.ctx.fillStyle = color;
+    this.ctx.imageSmoothingEnabled = false;
+    this.ctx.textBaseline = 'middle';
+    // Additional pixelation settings
+    this.ctx.webkitImageSmoothingEnabled = false;
+    this.ctx.mozImageSmoothingEnabled = false;
+    this.ctx.msImageSmoothingEnabled = false;
+  }
   drawPause() {
     this.ctx.save();
     this.ctx.globalAlpha = 0.7;
     this.ctx.fillStyle = '#000';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.globalAlpha = 1;
-    this.ctx.fillStyle = '#fff';
-    this.ctx.font = '32px monospace';
-    this.ctx.fillText('PAUSED', 340, 300);
+    this.setupPixelArtText(48, '#fff');
+    this.ctx.fillText('PAUSED', 300, 300);
     this.ctx.restore();
   }
   drawGameOver() {
@@ -2041,9 +2562,8 @@ class Game {
     this.ctx.fillStyle = '#000';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.globalAlpha = 1;
-    this.ctx.fillStyle = '#f00';
-    this.ctx.font = '32px monospace';
-    this.ctx.fillText('GAME OVER', 320, 300);
+    this.setupPixelArtText(48, '#f00');
+    this.ctx.fillText('GAME OVER', 240, 300);
     this.ctx.restore();
   }
   drawLevelComplete() {
@@ -2052,14 +2572,13 @@ class Game {
     this.ctx.fillStyle = '#000';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.globalAlpha = 1;
-    this.ctx.fillStyle = '#0f0';
-    this.ctx.font = '32px monospace';
-    this.ctx.fillText('LEVEL COMPLETE!', 270, 300);
-    this.ctx.font = '18px monospace';
+    this.setupPixelArtText(42, '#0f0');
+    this.ctx.fillText('LEVEL COMPLETE!', 150, 300);
+    this.setupPixelArtText(24, '#0f0');
     if (this.currentLevel < this.levels.length - 1) {
-      this.ctx.fillText('Press N for Next Level', 270, 340);
+      this.ctx.fillText('Press N for Next Level', 200, 350);
     } else {
-      this.ctx.fillText('All levels complete!', 270, 340);
+      this.ctx.fillText('All levels complete!', 220, 350);
     }
     this.ctx.restore();
     // TODO: Implement unlock menu
