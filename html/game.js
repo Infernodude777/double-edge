@@ -1,4 +1,56 @@
 // Double-Edge: Retro 2D Platformer
+// --- Music System ---
+class MusicManager {
+  constructor(trackList) {
+    this.tracks = trackList.map(src => new Audio(src));
+    this.current = 0;
+    this.isPlaying = false;
+    this._setupLoop();
+  }
+  _setupLoop() {
+    this.tracks.forEach(track => {
+      track.addEventListener('ended', () => {
+        this.next();
+      });
+    });
+  }
+  play(index = 0) {
+    this.stop();
+    this.current = index;
+    this.tracks[this.current].loop = false;
+    this.tracks[this.current].play();
+    this.isPlaying = true;
+  }
+  pause() {
+    if (this.isPlaying) {
+      this.tracks[this.current].pause();
+      this.isPlaying = false;
+    }
+  }
+  resume() {
+    if (!this.isPlaying) {
+      this.tracks[this.current].play();
+      this.isPlaying = true;
+    }
+  }
+  stop() {
+    this.tracks.forEach(track => {
+      track.pause();
+      track.currentTime = 0;
+    });
+    this.isPlaying = false;
+  }
+  next() {
+    this.stop();
+    this.current = (this.current + 1) % this.tracks.length;
+    this.play(this.current);
+  }
+  prev() {
+    this.stop();
+    this.current = (this.current - 1 + this.tracks.length) % this.tracks.length;
+    this.play(this.current);
+  }
+}
 // Modular ES6 classes, placeholder shapes, and comments for future sprite import
 
 // --- Sound Stub ---
@@ -6,6 +58,28 @@ function playSound(name) {
   // TODO: Insert .wav/.mp3 files later
   // Example: new Audio(`assets/sounds/${name}.wav`).play();
 }
+
+// --- MusicManager Initialization ---
+const musicManager = new MusicManager([
+  '../doubleedge_assets/Music/prodmusic/music2.wav',
+  '../doubleedge_assets/Music/prodmusic/mysteriousblurbs-segment.wav',
+  '../doubleedge_assets/Music/prodmusic/updown.wav'
+]);
+
+// Start music when game loads
+window.addEventListener('DOMContentLoaded', () => {
+  musicManager.play(0); // Play first track
+});
+
+// Example: Keyboard controls for music (M: next, N: previous, P: pause/resume)
+window.addEventListener('keydown', e => {
+  if (e.code === 'KeyM') musicManager.next();
+  if (e.code === 'KeyN') musicManager.prev();
+  if (e.code === 'KeyP') {
+    if (musicManager.isPlaying) musicManager.pause();
+    else musicManager.resume();
+  }
+});
 
 // --- Utility ---
 function randInt(min, max) {
