@@ -51,6 +51,7 @@ class Player {
     this.maxJumps = 2; // Allow double jumps
     // Removed energy system for infinite jumps
     this.energy = Infinity; // Set energy to infinite for jumps
+    this.maxEnergy = Infinity; // Set max energy to infinite as well
     this.powerUpCooldown = 0;
     this.maxAmmo = 10;
     this.ammo = this.maxAmmo;
@@ -58,6 +59,8 @@ class Player {
     this.spellCooldown = 0; // Cooldown for spellcaster abilities (0.5s = 30 frames)
     this.healingCooldown = 0; // Separate cooldown for healing spell (10s = 600 frames)
     this._ePressed = false; // Track E key state for power-ups
+    this.standingOnPlatform = null; // Track which platform player is standing on
+    this.platformLastY = null; // Track last platform Y position
     
     // Casting system
     this.isCasting = false;
@@ -249,12 +252,14 @@ class Player {
   }
   
   releaseSpell(game) {
+    console.log('releaseSpell called, castingSpell:', this.castingSpell);
     if (!this.castingSpell) return null;
     
     let spellX = this.x + this.width / 2;
     let spellY = this.y + this.height / 2;
     let spell = null;
     let spellType = this.castingSpell;
+    console.log('Creating spell:', spellType, 'at position:', spellX, spellY, 'facing:', this.facing);
     
     switch (spellType) {
       case 'fireball':
@@ -272,10 +277,12 @@ class Player {
     }
     
     this.castingSpell = null;
+    console.log('Spell created:', spell);
     return { spell: spell, type: spellType };
   }
   
   startCasting(spellType) {
+    console.log('startCasting called with:', spellType);
     this.isCasting = true;
     this.castingTimer = 0;
     this.castingSpell = spellType;
@@ -311,24 +318,36 @@ class Player {
     // Handle spellcaster abilities
     if (this.weapon === 'spellcaster' && !this.isCasting && this.spellCooldown <= 0) {
       if (input.isDown('KeyZ')) { // Fireball
+        console.log('Fireball key pressed, starting cast');
         this.startCasting('fireball');
       } else if (input.isDown('KeyC')) { // Ice Shard
+        console.log('Ice shard key pressed, starting cast');
         this.startCasting('iceShard');
       } else if (input.isDown('KeyR') && this.healingCooldown <= 0) { // Healing Wave
+        console.log('Healing wave key pressed, starting cast');
         this.startCasting('healingWave');
         this.healingCooldown = 600; // 10 second cooldown
       }
+    } else if (this.weapon === 'spellcaster') {
+      // Debug why spells can't be cast
+      if (this.isCasting) console.log('Cannot cast: already casting');
+      if (this.spellCooldown > 0) console.log('Cannot cast: spell on cooldown:', this.spellCooldown);
     }
     
     // Press E to sacrifice heart for power-up
-    if (input.isDown('KeyE') && !this._ePressed && this.powerUpCooldown <= 0 && this.hearts > 1 && !this.powerUp) {
+    // On boss level (level 3), allow activation even with only 1 heart remaining
+    const minHearts = (game && game.currentLevel === 2) ? 0 : 1; // Boss level allows going to 0, others require > 1
+    if (input.isDown('KeyE') && !this._ePressed && this.powerUpCooldown <= 0 && this.hearts > minHearts && !this.powerUp) {
       this._ePressed = true;
       this.hearts--; // Sacrifice a heart
       this.powerUpCooldown = 600; // 10 second cooldown
       
-      // Random power-up
+      // Random power-up with debug logging
       const powerUps = ['speed', 'shield', 'damage'];
-      const randomPowerUp = powerUps[Math.floor(Math.random() * powerUps.length)];
+      const randomValue = Math.random();
+      const randomIndex = Math.floor(randomValue * powerUps.length);
+      const randomPowerUp = powerUps[randomIndex];
+      console.log(`Power-up selection: random value: ${randomValue}, index ${randomIndex}, power-up: ${randomPowerUp}, available: [${powerUps.join(', ')}]`);
       this.startPowerUp(randomPowerUp);
       
       // Update UI to show active power-up
@@ -336,6 +355,15 @@ class Player {
       if (powerupElement) {
         powerupElement.textContent = `Power-up: ${randomPowerUp.toUpperCase()}`;
         powerupElement.style.display = 'block';
+        powerupElement.style.color = '#0f0';
+        powerupElement.style.fontWeight = 'bold';
+      }
+      
+      // Update prompt to show cooldown
+      const promptElement = document.getElementById('prompt');
+      if (promptElement) {
+        promptElement.textContent = 'Power-up on cooldown (10s)';
+        promptElement.style.color = '#f80';
       }
       
       console.log(`Power-up activated: ${randomPowerUp}, Hearts remaining: ${this.hearts}`);
@@ -391,10 +419,24 @@ class Player {
     }
     // Gravity
     this.vy += 0.5;
+    
+    // Handle moving platform synchronization BEFORE moving the player
+    if (this.standingOnPlatform && this.standingOnPlatform.update && this.platformLastY !== null) {
+      // Player is standing on a moving platform - move with it
+      let platformDeltaY = this.standingOnPlatform.y - this.platformLastY;
+      this.y += platformDeltaY;
+      console.log(`Moving player with platform: deltaY=${platformDeltaY}, newY=${this.y}`);
+    }
+    
     // Move
     this.x += this.vx;
     this.y += this.vy;
     this.onGround = false;
+    
+    // Reset platform tracking for this frame
+    let wasStandingOnPlatform = this.standingOnPlatform;
+    this.standingOnPlatform = null;
+    
     // Platform collision and resolution
     for (let p of platforms) {
       if (this.collides(p)) {
@@ -426,6 +468,8 @@ class Player {
           }
           this.onGround = true;
           this.jumps = 0;
+          // Track which platform player is standing on
+          this.standingOnPlatform = p;
         } else if (prevY >= p.y + p.height) {
           this.y = p.y + p.height;
           this.vy = 0;
@@ -435,6 +479,15 @@ class Player {
           this.x = p.x + p.width;
         }
       }
+    }
+    
+    // Update platform tracking for next frame
+    if (this.standingOnPlatform && this.standingOnPlatform.update) {
+      // Player is standing on a moving platform - store current position for next frame
+      this.platformLastY = this.standingOnPlatform.y;
+    } else {
+      // Player not on moving platform - reset tracking
+      this.platformLastY = null;
     }
     // Hazard collision and resolution
     for (let h of hazards) {
@@ -536,9 +589,31 @@ class Player {
       this.powerUpTimer--;
       if (this.powerUpTimer === 0) this.endPowerUp();
     }
-    // Power-up cooldown decrement
+    // Power-up cooldown decrement and UI update
     if (this.powerUpCooldown > 0) {
       this.powerUpCooldown--;
+      
+      // Update prompt with cooldown timer
+      const promptElement = document.getElementById('prompt');
+      if (promptElement) {
+        const seconds = Math.ceil(this.powerUpCooldown / 60);
+        promptElement.textContent = `Power-up cooldown: ${seconds}s`;
+        promptElement.style.color = '#f80';
+      }
+    } else {
+      // Update prompt availability based on hearts and power-up status
+      const promptElement = document.getElementById('prompt');
+      if (promptElement && !this.powerUp) {
+        const minHearts = (game && game.currentLevel === 2) ? 0 : 1;
+        if (this.hearts > minHearts) {
+          promptElement.textContent = 'Press E to sacrifice a heart for a power-up';
+          promptElement.style.color = '#0f0';
+        } else {
+          const needed = minHearts + 1;
+          promptElement.textContent = `Need ${needed}+ hearts for power-up`;
+          promptElement.style.color = '#f00';
+        }
+      }
     }
     // Spell cooldown decrement
     if (this.spellCooldown > 0) {
@@ -1017,8 +1092,8 @@ class Player {
     this.powerUpTimer = 300; // 5 seconds at 60fps (reduced from 1200/20 seconds)
     this.powerUpCooldown = 1200; // 20 seconds cooldown
     if (type === 'shield') this.invincible = true;
-    // Restore energy on heart sacrifice
-    this.energy = this.maxEnergy;
+    // Maintain infinite energy for jumping
+    this.energy = Infinity;
     playSound('powerup');
   }
   endPowerUp() {
@@ -1366,12 +1441,19 @@ class Enemy {
     return this.x < hitbox.x + hitbox.width && this.x + this.width > hitbox.x &&
       this.y < hitbox.y + hitbox.height && this.y + this.height > hitbox.y;
   }
-  takeDamage(amount, direction = 'right') {
+  takeDamage(amount, direction = 'right', weapon = null) {
     // Don't take damage while frozen
     if (this.frozen > 0) return;
     
     this.health -= amount;
-    this.knockback = 10;
+    
+    // Double knockback for bow
+    if (weapon === 'bow') {
+      this.knockback = 20; // Double the standard 10 knockback
+    } else {
+      this.knockback = 10; // Standard knockback
+    }
+    
     this.knockbackDirection = direction; // Store the direction
     playSound('enemyHurt');
   }
@@ -1847,6 +1929,37 @@ class MovingPlatform extends Platform {
   }
 }
 
+// --- Vertical Moving Platform Class ---
+class VerticalMovingPlatform extends Platform {
+  constructor(x, y, width, height, minY = 200, maxY = 500, speed = 0.3) {
+    super(x, y, width, height);
+    this.minY = minY;
+    this.maxY = maxY;
+    this.speed = speed;
+    this.direction = 1; // 1 for down, -1 for up
+    this.startY = y;
+  }
+  
+  update() {
+    // Move the platform vertically
+    this.y += this.speed * this.direction;
+    
+    // Reverse direction when hitting boundaries
+    if (this.y <= this.minY) {
+      this.y = this.minY;
+      this.direction = 1;
+    } else if (this.y >= this.maxY) {
+      this.y = this.maxY;
+      this.direction = -1;
+    }
+  }
+  
+  // Override draw to handle moving platform rendering
+  draw(ctx) {
+    super.draw(ctx); // Use parent Platform draw method
+  }
+}
+
 // --- Hazard Class ---
 class Hazard {
   constructor(x, y, width, height) {
@@ -2090,12 +2203,8 @@ class HealingWave {
     this.radius += 3; // Expand outward
     this.lifetime--;
     
-    // Heal player if within range and not already healed
-    if (!this.hasHealed && this.distanceTo(player) <= this.radius) {
-      player.hearts = Math.min(player.hearts + this.healAmount, player.maxHearts);
-      this.hasHealed = true;
-      playSound('heal');
-    }
+    // Only heal player if they cast the healing wave (don't auto-heal)
+    // Healing wave now only affects enemies, not the player automatically
   }
   
   distanceTo(obj) {
@@ -2168,7 +2277,15 @@ class Arrow {
     for (let enemy of enemies) {
       if (this.collides(enemy)) {
         let knockDirection = this.vx > 0 ? 'right' : 'left';
-        enemy.takeDamage(this.damage, knockDirection);
+        
+        // Double damage against bosses
+        let actualDamage = this.damage;
+        if (enemy.constructor.name === 'BossEnemy' || enemy.constructor.name === 'SuperBoss') {
+          actualDamage = this.damage * 2;
+          console.log(`Bow deals double damage to boss: ${actualDamage} (base: ${this.damage})`);
+        }
+        
+        enemy.takeDamage(actualDamage, knockDirection, 'bow'); // Pass 'bow' for double knockback
         this.hasHitEnemy = true;
         return;
       }
@@ -2604,12 +2721,15 @@ class Game {
 
     // Level complete condition
     if (this.currentLevel >= 2) {
+      // Boss level (level 3) - require both boss AND all minions to be killed
       let remainingBosses = this.enemies.filter(e => 
         e.constructor.name === 'BossEnemy' || e.constructor.name === 'SuperBoss'
       );
-      if (remainingBosses.length === 0) {
-        this.levelComplete = true;
-        this.unlockWeaponForLevel(this.currentLevel);
+      // Level complete only when ALL enemies are dead (boss + minions)
+      if (this.enemies.length === 0) {
+        console.log('Level 3 complete: Boss and all minions defeated!');
+        // Game is completed after level 3!
+        this.gameCompleted = true;
       }
     } else {
       if (this.enemies.length === 0) {
@@ -2654,27 +2774,81 @@ class Game {
   this.ctx.fillText('GAME OVER', this.canvas.width / 2, this.canvas.height / 2);
   this.ctx.restore();
   }
+  
+  drawGameCompleted() {
+    this.ctx.save();
+    
+    // Full screen black background
+    this.ctx.fillStyle = '#000';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    // Main "GAME COMPLETED!" text - large, green, centered
+    this.setupPixelArtText(48, '#0f0'); // Bright green
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText('GAME COMPLETED!', this.canvas.width / 2, this.canvas.height / 2 - 40);
+    
+    // "FUTURE UPDATES COMING" text - smaller, white, centered below
+    this.setupPixelArtText(24, '#fff');
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText('FUTURE UPDATES COMING', this.canvas.width / 2, this.canvas.height / 2 + 20);
+    
+    this.ctx.restore();
+  }
+  
+  drawGameCompleted() {
+    this.ctx.save();
+    
+    // Full screen black background
+    this.ctx.fillStyle = '#000';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    // Main "GAME COMPLETED!" text - large, green, centered
+    this.setupPixelArtText(48, '#0f0'); // Bright green
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText('GAME COMPLETED!', this.canvas.width / 2, this.canvas.height / 2 - 40);
+    
+    // "FUTURE UPDATES COMING" text - smaller, white, centered below
+    this.setupPixelArtText(24, '#fff');
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText('FUTURE UPDATES COMING', this.canvas.width / 2, this.canvas.height / 2 + 20);
+    
+    this.ctx.restore();
+  }
   drawLevelComplete() {
     this.ctx.save();
-    this.ctx.globalAlpha = 0.7;
-    this.ctx.fillStyle = '#222'; // Force grayish-black overlay
+    
+    // Full screen semi-transparent overlay (like game over screen)
+    this.ctx.globalAlpha = 0.8;
+    this.ctx.fillStyle = '#000';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.globalAlpha = 1;
-    this.setupPixelArtText(42, '#fff');
-    this.ctx.textAlign = 'center';
-    this.ctx.fillText('LEVEL COMPLETE!', this.canvas.width / 2, 300);
-    this.setupPixelArtText(24, '#ff0');
-    this.ctx.textAlign = 'center';
-    this.ctx.fillText('Press N for Next Level', this.canvas.width / 2, 350);
-    this.ctx.restore();
     
-    // Weapon unlock notification (if any)
+    // Main "LEVEL COMPLETE!" text - large, green, centered
+    this.setupPixelArtText(48, '#0f0'); // Bright green like game over red
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText('LEVEL COMPLETE!', this.canvas.width / 2, this.canvas.height / 2 - 40);
+    
+    // "Press N for Next Level" instruction - smaller, centered below
+    this.setupPixelArtText(24, '#fff');
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText('Press N for Next Level', this.canvas.width / 2, this.canvas.height / 2 + 20);
+    
+    // Weapon unlock notification (if any) - positioned above main text
     if (this.newWeaponUnlocked) {
-      this.setupPixelArtText(14, '#ff0');
+      this.setupPixelArtText(18, '#ff0');
       this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'middle';
       const weaponName = this.newWeaponUnlocked.charAt(0).toUpperCase() + this.newWeaponUnlocked.slice(1);
-      this.ctx.fillText(`NEW WEAPON: ${weaponName}!`, this.canvas.width / 2, 85);
+      this.ctx.fillText(`NEW WEAPON: ${weaponName}!`, this.canvas.width / 2, this.canvas.height / 2 - 100);
     }
+    
+    this.ctx.restore();
   }
   
   drawLevelCompleteOverlay() {
@@ -2735,6 +2909,7 @@ class Game {
     this.loadLevel(this.currentLevel);
     this.levelComplete = false;
     this.gameOver = false;
+    this.gameCompleted = false;
     this.paused = false;
     this.screenShakeX = 0;
     this.screenShakeY = 0;
@@ -2755,6 +2930,11 @@ class Game {
     this.frameCount++;
     if (this.paused) {
       this.drawPause();
+      requestAnimationFrame(this.loop);
+      return;
+    }
+    if (this.gameCompleted) {
+      this.drawGameCompleted();
       requestAnimationFrame(this.loop);
       return;
     }
@@ -2800,9 +2980,12 @@ class Game {
     // Draw cutscene if active
     if (this.inCutscene) {
       this.drawCutscene();
+    } else if (this.gameCompleted) {
+      // Draw game completed screen
+      this.drawGameCompleted();
     } else if (this.levelComplete) {
-      // Draw level complete overlay (non-pausing)
-      this.drawLevelCompleteOverlay();
+      // Draw full-screen level complete (non-pausing, like game over screen)
+      this.drawLevelComplete();
     }
     
     // Apply red tint for boss level
@@ -2829,7 +3012,7 @@ class Game {
         }
         this.levelComplete = false;
       }
-      if (e.code === 'KeyR' && this.gameOver) {
+      if (e.code === 'KeyR' && (this.gameOver || this.gameCompleted)) {
         this.reset();
       }
       if (e.code === 'KeyP') {
@@ -2844,6 +3027,15 @@ class Game {
     this.cutsceneType = 'devil';
     this.cutsceneTimer = 0;
     this.dialogueIndex = 0;
+    
+    // Show skip cutscene button
+    const skipBtn = document.getElementById('skip-cutscene-btn');
+    if (skipBtn) {
+      skipBtn.style.display = 'block';
+      console.log('Skip cutscene button shown');
+    } else {
+      console.log('Skip cutscene button not found!');
+    }
     this.playerRunning = false; // Skip running animation, go straight to dialogue
     this.playerTargetX = 400; // Center of screen
     this._spacePressed = false; // Reset space key state
@@ -2987,6 +3179,10 @@ class Game {
   }
   
   loadLevel(levelIndex) {
+    // Preserve current weapon and health before level transition
+    const currentWeapon = this.player ? this.player.weapon : 'sword';
+    const currentHearts = this.player ? this.player.hearts : 5;
+    
     // Set up different levels
     if (levelIndex === 0) {
       // Level 1
@@ -3006,7 +3202,7 @@ class Game {
         new Enemy(300, 475)
       ];
       this.player.maxHearts = 5;
-      this.player.hearts = 5;
+      this.player.hearts = 5; // Always start level 1 with full health
       
       // Disable boss level effects for level 1
       this.isBossLevel = false;
@@ -3016,12 +3212,14 @@ class Game {
       this.player = new Player(100, 475);
       this.platforms = [
         new Platform(0, 550, 800, 50), // Ground
-        new Platform(150, 450, 100, 20),
         new Platform(300, 350, 100, 20),
         new Platform(500, 280, 100, 20),
         new Platform(650, 200, 100, 20)
       ];
-      this.movingPlatforms = []; // No moving platforms in level 2
+      // Add vertical moving platform as the lowest floating platform
+      this.movingPlatforms = [
+        new VerticalMovingPlatform(150, 420, 100, 20, 380, 460, 0.4) // Slow vertical movement with tighter bounds
+      ];
       this.hazards = [
         new Hazard(250, 540, 40, 10),
         new Hazard(450, 540, 60, 10)
@@ -3032,7 +3230,8 @@ class Game {
         new Enemy(700, 475)
       ];
       this.player.maxHearts = 8;
-      this.player.hearts = 8;
+      // Add 3 hearts to current health instead of resetting to full
+      this.player.hearts = Math.min(currentHearts + 3, this.player.maxHearts);
       
       // Disable boss level effects for level 2
       this.isBossLevel = false;
@@ -3043,6 +3242,9 @@ class Game {
       this.bossLevelTimer = 0;
     } else if (levelIndex === 2) {
       // Level 3 - Boss level with dramatic effects
+      // Preserve hearts count before creating new player
+      const currentHearts = this.player ? this.player.hearts : 3;
+      
       this.player = new Player(100, 475);
       this.platforms = [
         new Platform(0, 550, 800, 50), // Ground only
@@ -3065,11 +3267,9 @@ class Game {
         new BossEnemy(600, 475) // Enhanced boss enemy
       ];
       
-      // Set hearts to 3 if coming from cutscene, otherwise keep current
-      if (this.player.hearts > 3) {
-        this.player.maxHearts = 3;
-        this.player.hearts = 3;
-      }
+      // Set hearts to 3 if coming from cutscene, otherwise preserve current hearts
+      this.player.maxHearts = 3;
+      this.player.hearts = Math.min(currentHearts, 3); // Don't exceed max hearts for boss level
       
       // Enable boss level effects
       this.isBossLevel = true;
@@ -3089,8 +3289,8 @@ class Game {
     this.gameOver = false;
     this.newWeaponUnlocked = null;
     
-    // Set default weapon
-    this.player.weapon = 'sword';
+    // Preserve weapon across level transitions
+    this.player.weapon = currentWeapon;
     
     // Update UI
     if (this.ui && this.ui.update) this.ui.update();
@@ -3142,12 +3342,18 @@ class Game {
       }
     }
   }
-  
+
   endCutscene() {
     // Clean up video
     if (this.cutsceneVideo) {
       this.cutsceneVideo.pause();
       this.cutsceneVideo.currentTime = 0;
+    }
+    
+    // Hide skip cutscene button
+    const skipBtn = document.getElementById('skip-cutscene-btn');
+    if (skipBtn) {
+      skipBtn.style.display = 'none';
     }
     
     // End cutscene state
@@ -3156,9 +3362,7 @@ class Game {
     this.currentLevel = 2; // Set to level 3 (index 2)
     this.loadLevel(this.currentLevel);
     console.log('Cutscene ended, loading level 3');
-  }
-  
-  updateHeartsDisplay() {
+  }  updateHeartsDisplay() {
     const heartsContainer = document.getElementById('hearts');
     if (!heartsContainer || !this.player) return;
     
