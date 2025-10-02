@@ -28,7 +28,7 @@ class Player {
     this.x = x; this.y = y;
     this._attackHit = false;
     this.vx = 0; this.vy = 0;
-    this.width = 32; this.height = 48;
+  this.width = 50; this.height = 75;
     this.color = '#0ff';
     this.maxHearts = 5; // Default for level 1, will be updated by loadLevel
     this.hearts = 5; // Default for level 1, will be updated by loadLevel
@@ -42,21 +42,22 @@ class Player {
     this.powerUpTimer = 0;
     this.weapon = 'sword';
     this.speed = 3;
-    this.jumpPower = 10;
+  this.jumpPower = 11;
     this.onGround = false;
     this.invincible = false;
     this.cosmetic = null;
     this.facing = 'right'; // 'left' or 'right'
     this.jumps = 0; // double jump counter
-    this.maxJumps = 2;
-    this.maxEnergy = 180; // 18 jumps, 6 double jumps (30 energy each) - 2x the original
-    this.energy = this.maxEnergy;
+    this.maxJumps = 2; // Allow double jumps
+    // Removed energy system for infinite jumps
+    this.energy = Infinity; // Set energy to infinite for jumps
     this.powerUpCooldown = 0;
     this.maxAmmo = 10;
     this.ammo = this.maxAmmo;
     this.healingStun = 0; // For healing spell - makes player stationary
     this.spellCooldown = 0; // Cooldown for spellcaster abilities (0.5s = 30 frames)
     this.healingCooldown = 0; // Separate cooldown for healing spell (10s = 600 frames)
+    this._ePressed = false; // Track E key state for power-ups
     
     // Casting system
     this.isCasting = false;
@@ -274,6 +275,13 @@ class Player {
     return { spell: spell, type: spellType };
   }
   
+  startCasting(spellType) {
+    this.isCasting = true;
+    this.castingTimer = 0;
+    this.castingSpell = spellType;
+    this.spellCooldown = 30; // 0.5 second cooldown
+  }
+  
   createArrow() {
     if (!this.releaseArrow) return null;
     
@@ -298,6 +306,44 @@ class Player {
     let moveSpeed = this.powerUp === 'speed' ? this.speed * 1.7 : this.speed;
     if (this.isChargingBow) {
       moveSpeed *= 0.3; // Move 30% speed while charging bow
+    }
+    
+    // Handle spellcaster abilities
+    if (this.weapon === 'spellcaster' && !this.isCasting && this.spellCooldown <= 0) {
+      if (input.isDown('KeyZ')) { // Fireball
+        this.startCasting('fireball');
+      } else if (input.isDown('KeyC')) { // Ice Shard
+        this.startCasting('iceShard');
+      } else if (input.isDown('KeyR') && this.healingCooldown <= 0) { // Healing Wave
+        this.startCasting('healingWave');
+        this.healingCooldown = 600; // 10 second cooldown
+      }
+    }
+    
+    // Press E to sacrifice heart for power-up
+    if (input.isDown('KeyE') && !this._ePressed && this.powerUpCooldown <= 0 && this.hearts > 1 && !this.powerUp) {
+      this._ePressed = true;
+      this.hearts--; // Sacrifice a heart
+      this.powerUpCooldown = 600; // 10 second cooldown
+      
+      // Random power-up
+      const powerUps = ['speed', 'shield', 'damage'];
+      const randomPowerUp = powerUps[Math.floor(Math.random() * powerUps.length)];
+      this.startPowerUp(randomPowerUp);
+      
+      // Update UI to show active power-up
+      const powerupElement = document.getElementById('powerup');
+      if (powerupElement) {
+        powerupElement.textContent = `Power-up: ${randomPowerUp.toUpperCase()}`;
+        powerupElement.style.display = 'block';
+      }
+      
+      console.log(`Power-up activated: ${randomPowerUp}, Hearts remaining: ${this.hearts}`);
+    }
+    
+    // Reset E press flag when key is released
+    if (!input.isDown('KeyE')) {
+      this._ePressed = false;
     }
     
     if (this.healingStun <= 0 && !this.isCasting) {
@@ -356,8 +402,28 @@ class Player {
         let prevX = this.x - this.vx;
         // Vertical collision
         if (prevY + this.height <= p.y) {
+          // Check for fall distance
+          let fallDistance = Math.abs(this.vy);
           this.y = p.y - this.height;
           this.vy = 0;
+          if (!this.onGround && fallDistance > 32 * 5) { // 5 tiles
+            // Landed with a boom
+            playSound('boom');
+            // Create shockwave effect (visual)
+            if (window.game) {
+              window.game.shockwaves.push({x: this.x + this.width/2, y: this.y + this.height, radius: 80, timer: 20});
+            }
+            // Damage nearby enemies
+            if (window.game && window.game.enemies) {
+              for (let enemy of window.game.enemies) {
+                let dx = (enemy.x + enemy.width/2) - (this.x + this.width/2);
+                let dy = (enemy.y + enemy.height/2) - (this.y + this.height);
+                if (Math.sqrt(dx*dx + dy*dy) < 100) {
+                  if (enemy.takeDamage) enemy.takeDamage(1);
+                }
+              }
+            }
+          }
           this.onGround = true;
           this.jumps = 0;
         } else if (prevY >= p.y + p.height) {
@@ -441,14 +507,12 @@ class Player {
       }
     }
     
-    // Bow aiming (F key for height adjustment)
+    // Bow aiming (Arrow keys for height adjustment)
     if (this.weapon === 'bow') {
-      if (input.isDown('KeyF') && !this._aimPressed) {
-        this.bowAimHeight += 0.2;
-        if (this.bowAimHeight > this.maxAimHeight) this.bowAimHeight = -this.maxAimHeight;
-        this._aimPressed = true;
-      } else if (!input.isDown('KeyF')) {
-        this._aimPressed = false;
+      if (input.isDown('ArrowUp')) {
+        this.bowAimHeight = Math.max(this.bowAimHeight - 0.03, -1);
+      } else if (input.isDown('ArrowDown')) {
+        this.bowAimHeight = Math.min(this.bowAimHeight + 0.03, 1);
       }
     }
     
@@ -869,13 +933,13 @@ class Player {
       // Handle sprite flipping based on facing direction
       if (this.facing === 'left') {
         // Flip horizontally for left-facing
-        ctx.save();
-        ctx.scale(-1, 1);
-        ctx.drawImage(img, -(this.x + this.width), this.y, 32, 48);
-        ctx.restore();
+  ctx.save();
+  ctx.scale(-1, 1);
+  ctx.drawImage(img, -(this.x + this.width), this.y, this.width, this.height);
+  ctx.restore();
       } else {
-        // Draw normally for right-facing
-        ctx.drawImage(img, this.x, this.y, 32, 48);
+  // Draw normally for right-facing
+  ctx.drawImage(img, this.x, this.y, this.width, this.height);
       }
     }
     // Cosmetic effect
@@ -908,10 +972,9 @@ class Player {
       ctx.fillRect(this.x - 4, this.y - 19, 40 * chargePercent, 4);
       
       // Aim trajectory preview
-      let baseSpeed = 3 + (chargePercent * 12);
-      let angle = -0.3 + (this.bowAimHeight * 0.8);
-      let vx = (this.facing === 'right' ? 1 : -1) * baseSpeed * Math.cos(angle);
-      let vy = baseSpeed * Math.sin(angle);
+      let arrowSpeed = 8 + (chargePercent * 6); // Match Arrow constructor
+      let vx = (this.facing === 'right' ? 1 : -1) * arrowSpeed;
+      let vy = (this.bowAimHeight * 3) + (chargePercent * -4); // Match Arrow constructor with charge bonus
       
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2;
@@ -922,10 +985,11 @@ class Player {
       let y = this.y + this.height/2;
       ctx.moveTo(x, y);
       
-      // Draw trajectory arc (simplified)
+      // Draw trajectory arc matching actual arrow physics
       for (let t = 1; t <= 20; t++) {
-        x += vx * 2;
-        y += vy * 2 + (0.3 * t * 2); // gravity effect
+        x += vx;
+        y += vy;
+        vy += 0.2; // Match gravity in Arrow.update
         ctx.lineTo(x, y);
         if (x < 0 || x > 800 || y > 600) break;
       }
@@ -950,7 +1014,7 @@ class Player {
   }
   startPowerUp(type) {
     this.powerUp = type;
-    this.powerUpTimer = 1200; // 20 seconds at 60fps
+    this.powerUpTimer = 300; // 5 seconds at 60fps (reduced from 1200/20 seconds)
     this.powerUpCooldown = 1200; // 20 seconds cooldown
     if (type === 'shield') this.invincible = true;
     // Restore energy on heart sacrifice
@@ -961,6 +1025,11 @@ class Player {
     if (this.powerUp === 'shield') this.invincible = false;
     this.powerUp = null;
     this.powerUpTimer = 0;
+    // Hide power-up UI
+    const powerupElement = document.getElementById('powerup');
+    if (powerupElement) {
+      powerupElement.style.display = 'none';
+    }
     // Cooldown remains until expired
   }
 }
@@ -971,7 +1040,7 @@ class Enemy {
   constructor(x, y) {
   this.x = x; this.y = y;
   this.attackAnimFrames = 0;
-    this.width = 32; this.height = 32;
+  this.width = 64; this.height = 64;
     this.color = '#f00';
     this.vx = 1.5;
     this.vy = 0;
@@ -1034,7 +1103,7 @@ class Enemy {
     this.isPlayingDeathAnimation = false;
     this.deathAnimationComplete = false;
   }
-  update(player, platforms, ladders) {
+  update(player, platforms, ladders, hazards) {
     // If health is 0 or below, start death animation
     if (this.health <= 0 && !this.isPlayingDeathAnimation) {
       this.isPlayingDeathAnimation = true;
@@ -1067,14 +1136,31 @@ class Enemy {
     
     let wasMoving = false;
     // Simple AI: move toward player and track facing direction
+    let movingLeft = false, movingRight = false;
     if (player.x < this.x) {
       this.x -= this.vx;
       this.facing = 'left';
       wasMoving = true;
+      movingLeft = true;
     } else if (player.x > this.x) {
       this.x += this.vx;
       this.facing = 'right'; 
       wasMoving = true;
+      movingRight = true;
+    }
+
+    // Jump over hazards if colliding
+    if (hazards && this.onGround) {
+      for (let h of hazards) {
+        if (this.x + this.width > h.x && this.x < h.x + h.width && this.y + this.height > h.y && this.y < h.y + h.height) {
+          // Only jump if moving toward hazard
+          if ((movingLeft && this.x > h.x) || (movingRight && this.x < h.x + h.width)) {
+            this.vy = -10; // Jump height for enemies
+            this.onGround = false;
+            break;
+          }
+        }
+      }
     }
 
     // Determine current animation state
@@ -1196,11 +1282,11 @@ class Enemy {
     
     // Draw the sprite if loaded
     if (currentSprite && currentSprite.complete) {
-      ctx.drawImage(currentSprite, this.x, this.y, this.width, this.height);
+  ctx.drawImage(currentSprite, this.x, this.y, this.width, this.height);
     } else {
       // Fallback to colored rectangle if sprite not loaded
       ctx.fillStyle = this.color;
-      ctx.fillRect(this.x, this.y, this.width, this.height);
+  ctx.fillRect(this.x, this.y, this.width, this.height);
     }
     
     // Reset transformation for UI elements
@@ -1297,8 +1383,8 @@ class Enemy {
 class BossEnemy extends Enemy {
   constructor(x, y) {
     super(x, y);
-    this.width = 80;
-    this.height = 80;
+  this.width = 160;
+  this.height = 160;
     this.color = '#f0f';
     this.health = 30;
     this.maxHealth = 30; // Add maxHealth property
@@ -1432,8 +1518,8 @@ class BossEnemy extends Enemy {
 class SuperBoss extends BossEnemy {
   constructor(x, y) {
     super(x, y);
-    this.width = 60;  // Smaller than before (was 120)
-    this.height = 60; // Smaller than before (was 120)
+  this.width = 120;
+  this.height = 120;
     this.color = '#8A2BE2'; // Blue violet
     this.health = 50;
     this.maxHealth = 50;
@@ -1667,34 +1753,31 @@ class Platform {
       // Draw tiled platforms using the PNG images
       
       // Get actual image dimensions for tiling
-      const tileWidth = game.tileTopImage.width || 32;
-      const tileHeight = game.tileTopImage.height || 32;
+      const tileSize = 32; // Standard tile size
       
-      // Draw bottom layer (0.png) first
-      for (let x = this.x; x < this.x + this.width; x += tileWidth) {
-        for (let y = this.y; y < this.y + this.height; y += tileHeight) {
-          const drawWidth = Math.min(tileWidth, this.x + this.width - x);
-          const drawHeight = Math.min(tileHeight, this.y + this.height - y);
+      // Draw tiles row by row
+      for (let x = this.x; x < this.x + this.width; x += tileSize) {
+        for (let y = this.y; y < this.y + this.height; y += tileSize) {
+          const drawWidth = Math.min(tileSize, this.x + this.width - x);
+          const drawHeight = Math.min(tileSize, this.y + this.height - y);
           
-          // Draw bottom tile (0.png) - scale to fill the draw area
-          ctx.drawImage(
-            game.tileBottomImage, 
-            x, y, drawWidth, drawHeight
-          );
-        }
-      }
-      
-      // Draw top layer (1.png) on top
-      for (let x = this.x; x < this.x + this.width; x += tileWidth) {
-        for (let y = this.y; y < this.y + this.height; y += tileHeight) {
-          const drawWidth = Math.min(tileWidth, this.x + this.width - x);
-          const drawHeight = Math.min(tileHeight, this.y + this.height - y);
+          // Check if this tile is exposed to air (top surface)
+          const isTopSurface = (y === this.y); // First row is always top surface
+          const isExposedToAir = this.isExposedToAir(x, y, game);
           
-          // Draw top tile (1.png) - scale to fill the draw area
-          ctx.drawImage(
-            game.tileTopImage, 
-            x, y, drawWidth, drawHeight
-          );
+          if (isTopSurface || isExposedToAir) {
+            // Use 1.png for surface tiles (exposed to air)
+            ctx.drawImage(
+              game.tileTopImage, 
+              x, y, drawWidth, drawHeight
+            );
+          } else {
+            // Use 0.png for underground tiles (not exposed to air)
+            ctx.drawImage(
+              game.tileBottomImage, 
+              x, y, drawWidth, drawHeight
+            );
+          }
         }
       }
     } else {
@@ -1704,6 +1787,63 @@ class Platform {
     }
     
     ctx.restore();
+  }
+  
+  // Check if a tile position is exposed to air
+  isExposedToAir(tileX, tileY, game) {
+    const tileSize = 32;
+    
+    // Check if there's empty space above this tile
+    const checkY = tileY - tileSize;
+    
+    // If checking above the platform bounds, it's exposed to air
+    if (checkY < this.y) {
+      return true;
+    }
+    
+    // Check if any other platform occupies the space above
+    for (let platform of game.platforms) {
+      if (platform !== this && 
+          tileX >= platform.x && 
+          tileX < platform.x + platform.width &&
+          checkY >= platform.y && 
+          checkY < platform.y + platform.height) {
+        return false; // Space above is occupied by another platform
+      }
+    }
+    
+    return true; // No platform above, so exposed to air
+  }
+}
+
+// --- Moving Platform Class ---
+class MovingPlatform extends Platform {
+  constructor(x, y, width, height, minX = 0, maxX = 800, speed = 0.5) {
+    super(x, y, width, height);
+    this.minX = minX;
+    this.maxX = maxX - width; // Subtract width so platform doesn't go off screen
+    this.speed = speed;
+    this.direction = 1; // 1 for right, -1 for left
+    this.startX = x;
+  }
+  
+  update() {
+    // Move the platform
+    this.x += this.speed * this.direction;
+    
+    // Reverse direction when hitting boundaries
+    if (this.x <= this.minX) {
+      this.x = this.minX;
+      this.direction = 1;
+    } else if (this.x >= this.maxX) {
+      this.x = this.maxX;
+      this.direction = -1;
+    }
+  }
+  
+  // Override draw to handle moving platform rendering
+  draw(ctx) {
+    super.draw(ctx); // Use parent Platform draw method
   }
 }
 
@@ -1806,7 +1946,7 @@ class Fireball {
       if (this.collides(enemy)) {
         // Knockback direction based on fireball's velocity
         let knockDirection = this.vx > 0 ? 'right' : 'left';
-        enemy.takeDamage(3, knockDirection); // Direct damage, single target (increased from 2 to 3 - 1.5x damage)
+        enemy.takeDamage(4.5, knockDirection); // Direct damage, 1.5x increased from 3 to 4.5
         this.hasHitEnemy = true;
         this.exploded = true;
         return null;
@@ -1824,71 +1964,39 @@ class Fireball {
   explode(enemies, player) {
     this.exploded = true;
     
-    // Small area damage when hitting walls - affects all entities within explosion radius
-    const explosionRadius = 40; // Smaller radius than before
-    const explosionDamage = 2; // Lower damage than direct hit (increased from 1 to 2 - 1.5x damage)
-    
-    // Damage all enemies within radius
-    for (let enemy of enemies) {
-      let dx = enemy.x + enemy.width/2 - (this.x + this.width/2);
-      let dy = enemy.y + enemy.height/2 - (this.y + this.height/2);
-      let distance = Math.sqrt(dx * dx + dy * dy);
-      
-      if (distance <= explosionRadius) {
-        // Knockback direction based on enemy position relative to explosion center
-        let knockDirection = dx > 0 ? 'right' : 'left';
-        enemy.takeDamage(explosionDamage, knockDirection);
-        // Add visual feedback for explosion hit
-        enemy.stunned = Math.max(enemy.stunned, 10); // 0.17 seconds
-      }
-    }
-    
-    // Also damage player if they're too close (friendly fire)
-    let playerDx = player.x + player.width/2 - (this.x + this.width/2);
-    let playerDy = player.y + player.height/2 - (this.y + this.height/2);
-    let playerDistance = Math.sqrt(playerDx * playerDx + playerDy * playerDy);
-    
-    if (playerDistance <= explosionRadius) {
-      player.takeDamage(1); // Light damage to player
-    }
-    
-    // Return explosion effect for visual display
-    return new Explosion(this.x + this.width/2, this.y + this.height/2);
+    // Create explosion effect at fireball location
+    return new Explosion(this.x, this.y, 60); // Radius 60, damage nearby enemies
   }
   
   collides(obj) {
-    return this.x < obj.x + obj.width &&
-           this.x + this.width > obj.x &&
-           this.y < obj.y + obj.height &&
-           this.y + this.height > obj.y;
+    return this.x < obj.x + obj.width && this.x + this.width > obj.x &&
+           this.y < obj.y + obj.height && this.y + this.height > obj.y;
   }
   
   draw(ctx) {
-    if (this.exploded) return;
+    const centerX = this.x + this.width / 2;
+    const centerY = this.y + this.height / 2;
+    const radius = this.width / 2;
     
-    ctx.save();
-    ctx.fillStyle = '#ff4400';
-    ctx.shadowColor = '#ff0000';
-    ctx.shadowBlur = 10;
-    
-    // Draw fireball with flame effect
-    ctx.beginPath();
-    ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width/2, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Inner bright core
-    ctx.fillStyle = '#ffff00';
-    ctx.beginPath();
-    ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width/4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    // Draw flame effect with circles
+    for (let i = 0; i < 3; i++) {
+      ctx.save();
+      ctx.globalAlpha = 0.7 - (i * 0.2);
+      ctx.fillStyle = ['#f40', '#f80', '#fc0'][i];
+      let currentRadius = radius + (i * 2);
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, currentRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
   }
   
   isDone() {
-    return this.exploded;
+    return this.exploded || this.hasHitEnemy || this.lifetime <= 0;
   }
 }
 
+// --- Ice Shard Class ---
 class IceShard {
   constructor(x, y, direction) {
     this.x = x;
@@ -1896,243 +2004,156 @@ class IceShard {
     this.width = 12;
     this.height = 12;
     this.speed = 10;
-    // Set velocity based on direction ('left' or 'right')
     this.vx = direction === 'right' ? this.speed : -this.speed;
-    this.vy = 0; // Travel horizontally
-    this.lifetime = 240; // 4 seconds at 60fps
-    this.broken = false;
+    this.vy = 0;
+    this.lifetime = 180; // 3 seconds at 60fps
+    this.exploded = false;
   }
   
   update(platforms, enemies, player) {
-    if (this.broken) return;
+    if (this.exploded) return;
     
     this.x += this.vx;
     this.y += this.vy;
     this.lifetime--;
     
-    // Check collision with platforms - breaks on contact
+    // Check collision with platforms
     for (let p of platforms) {
       if (this.collides(p)) {
-        this.break();
+        this.exploded = true;
         return;
       }
     }
     
-    // Check collision with enemies - freezes them
+    // Check collision with enemies - freeze them
     for (let enemy of enemies) {
       if (this.collides(enemy)) {
-        enemy.frozen = 120; // 2 seconds at 60fps
-        this.break();
+        // Freeze for longer if it's a boss
+        const freezeDuration = enemy.constructor.name === 'BossEnemy' ? 360 : 180; // 6 seconds for bosses, 3 for normal enemies
+        enemy.frozen = freezeDuration;
+        this.exploded = true;
         return;
       }
     }
     
     // Check bounds
     if (this.x < 0 || this.x > 800 || this.y < 0 || this.y > 600 || this.lifetime <= 0) {
-      this.break();
+      this.exploded = true;
     }
   }
   
-  break() {
-    this.broken = true;
-    playSound('ice_break');
-  }
-  
   collides(obj) {
-    return this.x < obj.x + obj.width &&
-           this.x + this.width > obj.x &&
-           this.y < obj.y + obj.height &&
-           this.y + this.height > obj.y;
+    return this.x < obj.x + obj.width && this.x + this.width > obj.x &&
+           this.y < obj.y + obj.height && this.y + this.height > obj.y;
   }
   
   draw(ctx) {
-    if (this.broken) return;
+    const centerX = this.x + this.width / 2;
+    const centerY = this.y + this.height / 2;
+    const radius = this.width / 2;
     
-    ctx.save();
-    ctx.fillStyle = '#00ccff';
-    ctx.shadowColor = '#0088cc';
-    ctx.shadowBlur = 8;
-    
-    // Draw ice shard as diamond shape
+    // Draw ice ball as a circle
+    ctx.fillStyle = '#88ddff';
     ctx.beginPath();
-    ctx.moveTo(this.x + this.width/2, this.y);
-    ctx.lineTo(this.x + this.width, this.y + this.height/2);
-    ctx.lineTo(this.x + this.width/2, this.y + this.height);
-    ctx.lineTo(this.x, this.y + this.height/2);
-    ctx.closePath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
     ctx.fill();
     
-    // Inner bright core
-    ctx.fillStyle = '#ffffff';
+    // Draw ice crystal effect
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(this.x + this.width/2, this.y + this.height/4);
-    ctx.lineTo(this.x + 3*this.width/4, this.y + this.height/2);
-    ctx.lineTo(this.x + this.width/2, this.y + 3*this.height/4);
-    ctx.lineTo(this.x + this.width/4, this.y + this.height/2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+    ctx.moveTo(centerX - 4, centerY);
+    ctx.lineTo(centerX + 4, centerY);
+    ctx.moveTo(centerX, centerY - 4);
+    ctx.lineTo(centerX, centerY + 4);
+    ctx.stroke();
   }
   
   isDone() {
-    return this.broken;
+    return this.exploded || this.lifetime <= 0;
   }
 }
 
+// --- Healing Wave Class ---
 class HealingWave {
   constructor(x, y) {
     this.x = x;
     this.y = y;
-    this.radius = 0;
+    this.radius = 20;
     this.maxRadius = 120;
-    this.duration = 60; // 1 second at 60fps
-    this.frame = 0;
-    this.healed = new Set(); // Track what we've already healed
+    this.lifetime = 60; // 1 second at 60fps
+    this.healAmount = 2;
+    this.hasHealed = false;
   }
   
   update(enemies, player) {
-    this.frame++;
-    this.radius = (this.frame / this.duration) * this.maxRadius;
+    this.radius += 3; // Expand outward
+    this.lifetime--;
     
-    // Heal nearby entities (only once per wave)
-    const healAmount = randInt(1, 5);
-    
-    // Heal player if nearby and not already healed
-    if (!this.healed.has('player')) {
-      let distToPlayer = Math.sqrt((player.x - this.x) ** 2 + (player.y - this.y) ** 2);
-      if (distToPlayer <= this.radius) {
-        player.hearts = Math.min(player.hearts + healAmount, player.maxHearts);
-        this.healed.add('player');
-        playSound('heal');
-      }
+    // Heal player if within range and not already healed
+    if (!this.hasHealed && this.distanceTo(player) <= this.radius) {
+      player.hearts = Math.min(player.hearts + this.healAmount, player.maxHearts);
+      this.hasHealed = true;
+      playSound('heal');
     }
-    
-    // Heal nearby enemies
-    enemies.forEach((enemy, index) => {
-      if (!this.healed.has(`enemy_${index}`)) {
-        let distToEnemy = Math.sqrt((enemy.x - this.x) ** 2 + (enemy.y - this.y) ** 2);
-        if (distToEnemy <= this.radius) {
-          // Heal enemy using their maxHealth property
-          const oldHealth = enemy.health;
-          enemy.health = Math.min(enemy.health + healAmount, enemy.maxHealth);
-          const actualHeal = enemy.health - oldHealth;
-          this.healed.add(`enemy_${index}`);
-        }
-      }
-    });
+  }
+  
+  distanceTo(obj) {
+    let dx = (obj.x + obj.width/2) - this.x;
+    let dy = (obj.y + obj.height/2) - this.y;
+    return Math.sqrt(dx*dx + dy*dy);
   }
   
   draw(ctx) {
     ctx.save();
-    ctx.globalAlpha = 0.6 * (1 - this.frame / this.duration);
-    
-    // Draw healing wave as expanding green circles
-    let gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
-    gradient.addColorStop(0, '#00ff00');
-    gradient.addColorStop(0.5, '#88ff88');
-    gradient.addColorStop(1, 'transparent');
-    
-    ctx.strokeStyle = gradient;
+    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = '#0f0';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.stroke();
     
-    // Inner healing sparkles
-    ctx.fillStyle = '#00ff00';
+    // Inner healing particles
     for (let i = 0; i < 8; i++) {
-      let angle = (i / 8) * Math.PI * 2 + (this.frame * 0.1);
-      let sparkleRadius = this.radius * 0.7;
-      let sparkleX = this.x + Math.cos(angle) * sparkleRadius;
-      let sparkleY = this.y + Math.sin(angle) * sparkleRadius;
+      let angle = (Math.PI * 2 * i) / 8;
+      let px = this.x + Math.cos(angle) * (this.radius * 0.7);
+      let py = this.y + Math.sin(angle) * (this.radius * 0.7);
+      ctx.fillStyle = '#0f0';
       ctx.beginPath();
-      ctx.arc(sparkleX, sparkleY, 2, 0, Math.PI * 2);
+      ctx.arc(px, py, 3, 0, Math.PI * 2);
       ctx.fill();
     }
-    
     ctx.restore();
   }
   
   isDone() {
-    return this.frame >= this.duration;
+    return this.lifetime <= 0 || this.radius >= this.maxRadius;
   }
 }
 
-class Explosion {
-  constructor(x, y) {
-    this.x = x;
-    this.y = y;
-    this.radius = 0;
-    this.maxRadius = 60;
-    this.duration = 20; // Short explosion animation
-    this.frame = 0;
-  }
-  
-  update() {
-    this.frame++;
-    this.radius = (this.frame / this.duration) * this.maxRadius;
-  }
-  
-  draw(ctx) {
-    if (this.frame >= this.duration) return;
-    
-    ctx.save();
-    let alpha = 0.8 * (1 - this.frame / this.duration);
-    ctx.globalAlpha = alpha;
-    
-    // Draw expanding explosion circles
-    let gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
-    gradient.addColorStop(0, '#ffffff');
-    gradient.addColorStop(0.3, '#ffff00');
-    gradient.addColorStop(0.6, '#ff4400');
-    gradient.addColorStop(1, '#ff0000');
-    
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Outer shockwave ring
-    ctx.strokeStyle = '#ff8800';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-    ctx.stroke();
-    
-    ctx.restore();
-  }
-  
-  isDone() {
-    return this.frame >= this.duration;
-  }
-}
-
+// --- Arrow Class ---
 class Arrow {
-  constructor(x, y, direction, charge, aimHeight) {
+  constructor(x, y, direction, chargePercent, aimHeight) {
     this.x = x;
     this.y = y;
-    this.width = 8;
-    this.height = 3;
-    this.damage = Math.floor(charge * 5); // 0-5 damage based on charge
-    
-    // Calculate trajectory based on charge and aim height
-    let chargePercent = charge; // 0 to 1
-    let baseSpeed = 3 + (chargePercent * 12); // 3-15 speed
-    let angle = -0.3 + (aimHeight * 0.8); // Angle from -1.1 to 0.5 radians
-    
-    this.vx = (direction === 'right' ? 1 : -1) * baseSpeed * Math.cos(angle);
-    this.vy = baseSpeed * Math.sin(angle);
-    this.gravity = 0.3;
-    this.lifetime = 600; // 10 seconds max
+    this.width = 16;
+    this.height = 4;
+    this.speed = 8 + (chargePercent * 6); // 8-14 speed based on charge
+    this.damage = 1 + Math.floor(chargePercent * 2); // 1-3 damage based on charge
+    this.vx = direction === 'right' ? this.speed : -this.speed;
+    // Base aim height, plus extra upward velocity for charged shots
+    this.vy = (aimHeight * 3) + (chargePercent * -4); // Charged shots get extra upward velocity
+    this.lifetime = 300;
     this.stuck = false;
+    this.hasHitEnemy = false;
   }
   
   update(platforms, enemies, player) {
-    if (this.stuck) return;
+    if (this.stuck || this.hasHitEnemy) return;
     
     this.x += this.vx;
     this.y += this.vy;
-    this.vy += this.gravity; // Parabolic trajectory
+    this.vy += 0.2; // Gravity
     this.lifetime--;
     
     // Check collision with platforms
@@ -2146,192 +2167,69 @@ class Arrow {
     // Check collision with enemies
     for (let enemy of enemies) {
       if (this.collides(enemy)) {
-        let damage = this.damage;
-        // Bow deals 2x damage to bosses
-        if (enemy.constructor.name === 'BossEnemy' || enemy.constructor.name === 'SuperBoss') {
-          damage *= 2;
-        }
-        // Knockback direction based on arrow's velocity
         let knockDirection = this.vx > 0 ? 'right' : 'left';
-        enemy.takeDamage(damage, knockDirection);
-        this.stuck = true;
+        enemy.takeDamage(this.damage, knockDirection);
+        this.hasHitEnemy = true;
         return;
       }
     }
     
     // Check bounds
-    if (this.x < -50 || this.x > 850 || this.y > 650 || this.lifetime <= 0) {
+    if (this.x < 0 || this.x > 800 || this.y > 600 || this.lifetime <= 0) {
       this.stuck = true;
     }
   }
   
   collides(obj) {
-    return this.x < obj.x + obj.width &&
-           this.x + this.width > obj.x &&
-           this.y < obj.y + obj.height &&
-           this.y + this.height > obj.y;
-  }
-  
-  draw(ctx) {
-    if (this.stuck) return;
-    
-    ctx.save();
-    ctx.fillStyle = '#8B4513'; // Brown arrow shaft
-    ctx.fillRect(this.x, this.y, this.width, this.height);
-    
-    // Arrow tip
-    ctx.fillStyle = '#C0C0C0'; // Silver arrowhead
-    ctx.beginPath();
-    if (this.vx > 0) {
-      // Right-facing arrow
-      ctx.moveTo(this.x + this.width, this.y + this.height/2);
-      ctx.lineTo(this.x + this.width + 4, this.y + this.height/2 - 2);
-      ctx.lineTo(this.x + this.width + 4, this.y + this.height/2 + 2);
-    } else {
-      // Left-facing arrow
-      ctx.moveTo(this.x, this.y + this.height/2);
-      ctx.lineTo(this.x - 4, this.y + this.height/2 - 2);
-      ctx.lineTo(this.x - 4, this.y + this.height/2 + 2);
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  }
-  
-  isDone() {
-    return this.stuck;
-  }
-}
-
-// --- Asteroid Class ---
-class Asteroid {
-  constructor(targetX, targetY) {
-    this.x = Math.random() * 800; // Random X position across screen
-    this.y = -50; // Start above screen
-    
-    // Random size affects speed
-    this.sizeType = Math.random() < 0.5 ? 'medium' : 'large';
-    this.size = this.sizeType === 'medium' ? 20 : 35;
-    this.width = this.size;
-    this.height = this.size;
-    
-    // Speed based on size (smaller = faster)
-    this.baseSpeed = this.sizeType === 'medium' ? 6 : 3;
-    
-    // Calculate direction to player position when summoned
-    let dx = targetX - this.x;
-    let dy = targetY - this.y;
-    let distance = Math.sqrt(dx * dx + dy * dy);
-    
-    // Normalize direction and apply speed
-    if (distance > 0) {
-      this.vx = (dx / distance) * this.baseSpeed * 0.3; // Horizontal component
-      this.vy = this.baseSpeed; // Mainly downward movement
-    } else {
-      this.vx = 0;
-      this.vy = this.baseSpeed;
-    }
-    
-    this.damage = this.sizeType === 'medium' ? 2 : 3;
-    this.rotation = 0;
-    this.rotationSpeed = 0.1;
-    this.lifetime = 600; // 10 seconds max
-  }
-  
-  update() {
-    this.x += this.vx;
-    this.y += this.vy;
-    this.rotation += this.rotationSpeed;
-    this.lifetime--;
-  }
-  
-  draw(ctx) {
-    ctx.save();
-    ctx.translate(this.x + this.width/2, this.y + this.height/2);
-    ctx.rotate(this.rotation);
-    
-    // Draw pixelated asteroid
-    ctx.fillStyle = '#8B4513'; // Brown/rocky color
-    ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
-    
-    // Add some detail for pixelated look
-    ctx.fillStyle = '#654321'; // Darker brown details
-    let detail = this.size / 5;
-    ctx.fillRect(-this.width/2 + detail, -this.height/2 + detail, detail, detail);
-    ctx.fillRect(this.width/2 - detail*2, -this.height/2 + detail*2, detail, detail);
-    ctx.fillRect(-this.width/2 + detail*2, this.height/2 - detail*2, detail, detail);
-    
-    ctx.restore();
-  }
-  
-  isDone() {
-    return this.lifetime <= 0 || this.y > 650; // Off screen or expired
-  }
-  
-  collidesWith(obj) {
     return this.x < obj.x + obj.width && this.x + this.width > obj.x &&
            this.y < obj.y + obj.height && this.y + this.height > obj.y;
   }
+  
+  draw(ctx) {
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+    
+    // Arrow tip
+    ctx.fillStyle = '#C0C0C0';
+    ctx.fillRect(this.x + (this.vx > 0 ? this.width : -4), this.y, 4, this.height);
+  }
+  
+  isDone() {
+    return this.stuck || this.hasHitEnemy || this.lifetime <= 0;
+  }
 }
 
-// --- Laser Class ---
-class Laser {
-  constructor(startX, startY, direction) {
-    this.x = startX;
-    this.y = startY;
-    this.width = 8;
-    this.height = 400; // Long scanning beam
-    this.direction = direction; // 'horizontal' or 'vertical'
-    
-    if (this.direction === 'horizontal') {
-      this.width = 400;
-      this.height = 8;
-      this.vx = (Math.random() < 0.5 ? -1 : 1) * 2; // Random horizontal movement
-      this.vy = 0;
-    } else {
-      this.vx = 0;
-      this.vy = (Math.random() < 0.5 ? -1 : 1) * 2; // Random vertical movement
-    }
-    
-    this.damage = 2;
-    this.lifetime = 180; // 3 seconds
-    this.opacity = 1.0;
-    this.flashTimer = 0;
+// --- Explosion Class ---
+class Explosion {
+  constructor(x, y, radius) {
+    this.x = x;
+    this.y = y;
+    this.radius = radius;
+    this.maxRadius = radius;
+    this.lifetime = 30;
+    this.frame = 0;
   }
   
   update() {
-    this.x += this.vx;
-    this.y += this.vy;
+    this.frame++;
     this.lifetime--;
-    
-    // Fade out near end of lifetime
-    if (this.lifetime < 60) {
-      this.opacity = this.lifetime / 60;
-    }
-    
-    // Flash effect
-    this.flashTimer++;
-    if (this.flashTimer > 10) {
-      this.flashTimer = 0;
-    }
   }
   
   draw(ctx) {
     ctx.save();
-    ctx.globalAlpha = this.opacity;
+    ctx.globalAlpha = 0.8 - (this.frame / 30);
     
-    // Main laser beam
-    ctx.fillStyle = this.flashTimer < 5 ? '#FF0000' : '#FF6666'; // Red flashing
-    ctx.fillRect(this.x, this.y, this.width, this.height);
+    // Explosion circle
+    ctx.fillStyle = '#ff4400';
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius * (this.frame / 30), 0, Math.PI * 2);
+    ctx.fill();
     
     // Inner bright core
-    let coreOffset = 2;
-    ctx.fillStyle = '#FFFFFF';
-    if (this.direction === 'horizontal') {
-      ctx.fillRect(this.x + coreOffset, this.y + coreOffset, this.width - coreOffset*2, this.height - coreOffset*2);
-    } else {
-      ctx.fillRect(this.x + coreOffset, this.y + coreOffset, this.width - coreOffset*2, this.height - coreOffset*2);
-    }
+    ctx.fillStyle = '#ffff00';
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius * (this.frame / 30) * 0.5, 0, Math.PI * 2);
+    ctx.fill();
     
     ctx.restore();
   }
@@ -2339,795 +2237,232 @@ class Laser {
   isDone() {
     return this.lifetime <= 0;
   }
+}
+
+// --- Asteroid Class ---
+class Asteroid {
+  constructor(x, y) {
+    this.x = x;
+    this.y = -50; // Start above screen
+    this.targetX = x;
+    this.targetY = y;
+    this.width = 32;
+    this.height = 32;
+    this.vx = 0;
+    this.vy = 4;
+    this.lifetime = 300;
+  }
   
-  collidesWith(obj) {
+  update(platforms) {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.lifetime--;
+    
+    // Check collision with platforms
+    for (let p of platforms) {
+      if (this.collides(p)) {
+        this.lifetime = 0; // Destroy on impact
+        return;
+      }
+    }
+    
+    if (this.y > 600) {
+      this.lifetime = 0;
+    }
+  }
+  
+  collides(obj) {
     return this.x < obj.x + obj.width && this.x + this.width > obj.x &&
            this.y < obj.y + obj.height && this.y + this.height > obj.y;
   }
-}
-
-// --- PowerUp System ---
-const POWERUPS = ['damage', 'speed', 'shield', 'shockwave'];
-function getRandomPowerUp() {
-  return POWERUPS[randInt(0, POWERUPS.length - 1)];
-}
-
-// --- UI ---
-class UI {
-  constructor(player) {
-    this.player = player;
-    this.heartsDiv = document.getElementById('hearts');
-    this.energyDiv = document.getElementById('energybar');
-    this.powerupDiv = document.getElementById('powerup');
-  }
-  update() {
-    // Optimized Hearts - only update if changed
-    if (!this.lastHeartDisplay || this.lastHeartDisplay !== `${this.player.hearts}/${this.player.maxHearts}`) {
-      let heartsHTML = '';
-      // Use simpler styling and limit heart display to prevent performance issues
-      let displayHearts = Math.min(this.player.hearts, 10); // Show max 10 hearts
-      let displayMaxHearts = Math.min(this.player.maxHearts, 10); // Show max 10 hearts
-      
-      for (let i = 0; i < displayMaxHearts; i++) {
-        heartsHTML += i < displayHearts ? '❤️' : '🖤';
-      }
-      
-      // If more than 10 hearts, show count
-      if (this.player.maxHearts > 10) {
-        heartsHTML += ` (${this.player.hearts}/${this.player.maxHearts})`;
-      }
-      
-      this.heartsDiv.innerHTML = `<div style="font-size:24px;">${heartsHTML}</div>`;
-      this.lastHeartDisplay = `${this.player.hearts}/${this.player.maxHearts}`;
-    }
-    // Optimized Energy bar - only update if changed
-    let percent = Math.floor((this.player.energy / this.player.maxEnergy) * 100);
-    if (!this.lastEnergyPercent || this.lastEnergyPercent !== percent) {
-      let gradient = this.player.powerUp ?
-        `linear-gradient(270deg, #ff0, #f0f, #0ff, #ff0)` :
-        `linear-gradient(90deg, #0ff 60%, #ff0 100%)`;
-      this.energyDiv.innerHTML = `<div id='energybar-inner' style='width:${percent}%;background:${gradient}'></div>`;
-      this.lastEnergyPercent = percent;
-    }
+  
+  draw(ctx) {
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(this.x, this.y, this.width, this.height);
     
-    // Optimized Ammo bar - only update if changed
-    let ammoPercent = Math.floor((this.player.ammo / this.player.maxAmmo) * 100);
-    if (!this.lastAmmoPercent || this.lastAmmoPercent !== ammoPercent) {
-      let ammoGradient = `linear-gradient(90deg, #fff 60%, #f00 100%)`;
-      if (!document.getElementById('ammobar')) {
-        let bar = document.createElement('div');
-        bar.id = 'ammobar';
-        bar.style.height = '6px';
-        bar.style.marginBottom = '2px';
-        this.energyDiv.parentNode.insertBefore(bar, this.energyDiv.nextSibling);
-      }
-      document.getElementById('ammobar').innerHTML = `<div id='ammobar-inner' style='width:${ammoPercent}%;background:${ammoGradient};height:100%;'></div>`;
-      this.lastAmmoPercent = ammoPercent;
-    }
-    // Powerup
-    if (this.player.powerUp) {
-      let name = this.player.powerUp;
-      let time = Math.ceil(this.player.powerUpTimer / 60);
-      this.powerupDiv.innerHTML = `Power-Up: <b>${name}</b> (${time}s)`;
-    } else if (this.player.powerUpCooldown > 0) {
-      let cd = Math.ceil(this.player.powerUpCooldown / 60);
-      this.powerupDiv.innerHTML = `Power-Up Cooldown: <b>${cd}s</b>`;
-    } else if (this.player.healingCooldown > 0 && this.player.weapon === 'spellcaster') {
-      let cd = Math.ceil(this.player.healingCooldown / 60);
-      this.powerupDiv.innerHTML = `Heal Cooldown: <b>${cd}s</b>`;
-    } else {
-      this.powerupDiv.innerHTML = '';
-    }
+    // Rock texture
+    ctx.fillStyle = '#654321';
+    ctx.fillRect(this.x + 4, this.y + 4, 8, 8);
+    ctx.fillRect(this.x + 16, this.y + 8, 12, 6);
+    ctx.fillRect(this.x + 8, this.y + 20, 16, 8);
+  }
+  
+  isDone() {
+    return this.lifetime <= 0;
+  }
+}
+
+// --- Laser Class ---
+class Laser {
+  constructor(x, y, direction) {
+    this.x = x;
+    this.y = y;
+    this.width = 200;
+    this.height = 8;
+    this.direction = direction;
+    this.lifetime = 60;
+    this.damage = 3;
+  }
+  
+  update() {
+    this.lifetime--;
+  }
+  
+  collides(obj) {
+    return this.x < obj.x + obj.width && this.x + this.width > obj.x &&
+           this.y < obj.y + obj.height && this.y + this.height > obj.y;
+  }
+  
+  draw(ctx) {
+    ctx.save();
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+    
+    // Laser glow
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = '#ffaaaa';
+    ctx.fillRect(this.x, this.y - 2, this.width, this.height + 4);
+    ctx.restore();
+  }
+  
+  isDone() {
+    return this.lifetime <= 0;
   }
 }
 
 // --- Game Class ---
 class Game {
   constructor() {
+    // Get canvas and context
     this.canvas = document.getElementById('gameCanvas');
     this.ctx = this.canvas.getContext('2d');
+    
+    // Initialize input handler
     this.input = new Input();
-    this.levels = [
-      {
-        platforms: [
-          new Platform(0, 550, 800, 50),
-          new Platform(200, 450, 120, 20),
-          new Platform(400, 350, 120, 20),
-          new Platform(600, 250, 120, 20)
-        ],
-        hazards: [
-          new Hazard(350, 530, 40, 20),
-          new Hazard(500, 530, 40, 20)
-        ],
-        enemies: [
-          new Enemy(600, 500),
-          new Enemy(300, 500)
-        ],
-        playerStart: { x: 100, y: 400 }
-      },
-      {
-        platforms: [
-          new Platform(0, 550, 800, 50),
-          new Platform(100, 400, 100, 20),
-          new Platform(300, 300, 150, 20),
-          new Platform(600, 200, 120, 20),
-          new Platform(500, 500, 80, 20)
-        ],
-        hazards: [
-          new Hazard(250, 530, 40, 20),
-          new Hazard(700, 530, 40, 20),
-          new Hazard(400, 280, 40, 20)
-        ],
-        enemies: [
-          new Enemy(700, 500),
-          new Enemy(150, 380),
-          new Enemy(350, 280)
-        ],
-        playerStart: { x: 50, y: 500 }
-    },
-        // Level 3: Boss Level
-        {
-          platforms: [
-            new Platform(0, 550, 800, 50),
-            new Platform(200, 400, 120, 20),
-            new Platform(500, 300, 120, 20),
-            new Platform(350, 200, 200, 20)
-          ],
-          hazards: [
-            new Hazard(400, 530, 40, 20),
-            new Hazard(600, 530, 40, 20)
-          ],
-          enemies: [
-            { boss: true, x: 600, y: 470 }
-          ],
-          playerStart: { x: 100, y: 500 }
-        }
-    ];
+    
+    // Game state
     this.currentLevel = 0;
-    this.loadLevel(this.currentLevel);
-    this.enemiesKilled = 0;
-    this.paused = false;
-    this.gameOver = false;
     this.levelComplete = false;
-    this.inCutscene = false;
-    this.cutsceneState = 'none'; // 'altar-walking', 'altar-dialogue', 'altar-sacrifice'
-    this.cutsceneTimer = 0;
-    this.altarPlayerX = -100; // Player starts off-screen left
-    this.altarSacrificeCompleted = false; // Track if altar sacrifice was performed
-    this.nKeyPressed = false; // Track N key press state to avoid repeated triggers
-    this.dialogueIndex = 0;
-    this.dialogues = [
-      "I SEE YOU HAVE MADE IT THIS FAR",
-      "YOU MUST BE QUITE STRONG",
-      "I WONDER",
-      "WHAT IS YOUR MOTIVATION",
-      "COULD YOU BE AVENGING SOMEONE?",
-      "NEVERTHELESS",
-      "YOU MUST MAKE A SACRIFICE",
-      "THE ALTAR IS WAITING"
-    ];
-    this.roadUnlocks = { outfits: [], weapons: ['sword'], lore: [] }; // Start with only sword unlocked
-    this.newWeaponUnlocked = null; // For displaying unlock notifications
-    
-    // Framerate control - limit to 60fps for levels 1 and 2
-    this.targetFPS = 60;
-    this.frameInterval = 1000 / this.targetFPS; // 16.67ms per frame
+    this.gameOver = false;
+    this.paused = false;
+    this.frameCount = 0;
     this.lastFrameTime = 0;
+    this.enemiesKilled = 0;
     
-    this.loadUnlocks();
-    this.loop = this.loop.bind(this);
-    this.initInput();
-    this.shockwaves = [];
-    this.fireballs = [];
-    this.iceShards = [];
-    this.healingWaves = [];
-    this.explosions = [];
-    this.arrows = [];
-    this.asteroids = [];
-    this.lasers = [];
-    this.frameCount = 0; // Frame counter
-    
-    // Video for cutscene devil
-    this.cutsceneVideo = document.createElement('video');
-    this.cutsceneVideo.src = 'assets/ui/DoubleEdge Cutscene.mp4';
-    this.cutsceneVideo.loop = true;
-    this.cutsceneVideo.muted = true; // Mute to avoid autoplay issues
-    this.cutsceneVideo.autoplay = false;
-    this.cutsceneVideo.preload = 'auto';
-    this.cutsceneVideo.playsInline = true;
-    this.cutsceneVideo.controls = false; // Hide controls
-    this.videoLoaded = false;
-    this.videoPlaying = false;
-    this.videoForcePlay = false; // Flag to force play on user interaction
-    
-    // Load the video
-    this.cutsceneVideo.addEventListener('loadeddata', () => {
-      this.videoLoaded = true;
-      console.log('Cutscene video loaded');
-    });
-    
-    // Load background and tile images
-    this.backgroundImage = new Image();
-    this.backgroundImage.src = 'assets/ui/doubleedge_background.gif';
-    this.backgroundLoaded = false;
-    this.backgroundImage.onload = () => {
-      this.backgroundLoaded = true;
-      console.log('Background image loaded');
-    };
-    
-    this.tileBottomImage = new Image();
-    this.tileBottomImage.src = 'assets/ui/0.png';
-    this.tileBottomLoaded = false;
-    this.tileBottomImage.onload = () => {
-      this.tileBottomLoaded = true;
-      console.log('Bottom tile image loaded');
-    };
-    
-    this.tileTopImage = new Image();
-    this.tileTopImage.src = 'assets/ui/1.png';
-    this.tileTopLoaded = false;
-    this.tileTopImage.onload = () => {
-      this.tileTopLoaded = true;
-      console.log('Top tile image loaded');
-    };
-    
-    this.cutsceneVideo.addEventListener('canplay', () => {
-      console.log('Cutscene video ready to play');
-      // Try to start video if cutscene is active
-      if (this.inCutscene && !this.videoPlaying) {
-        this.startCutsceneVideo();
-      }
-    });
-    
-    this.cutsceneVideo.addEventListener('play', () => {
-      console.log('Video actually started playing');
-      this.videoPlaying = true;
-    });
-    
-    this.cutsceneVideo.addEventListener('pause', () => {
-      console.log('Video paused');
-      this.videoPlaying = false;
-    });
-    
-    this.cutsceneVideo.addEventListener('error', (e) => {
-      console.error('Error loading cutscene video:', e);
-    });
-    
-    this.cutsceneVideo.addEventListener('ended', () => {
-      // Restart video when it ends (backup for loop)
-      if (this.inCutscene) {
-        this.cutsceneVideo.currentTime = 0;
-        this.cutsceneVideo.play().catch(e => console.error('Error restarting video:', e));
-      }
-    });
-    
-    // Add click listener to canvas to enable video playback on user interaction
-    this.canvas.addEventListener('click', () => {
-      console.log('Canvas clicked');
-      if (this.inCutscene && this.videoLoaded) {
-        console.log('In cutscene - forcing video play');
-        this.cutsceneVideo.currentTime = 0;
-        this.cutsceneVideo.muted = true;
-        this.cutsceneVideo.play().then(() => {
-          console.log('✓ Click-triggered video play successful');
-          this.videoPlaying = true;
-        }).catch(e => {
-          console.error('✗ Click-triggered video play failed:', e);
-          // Try with different settings
-          this.cutsceneVideo.muted = false;
-          this.cutsceneVideo.volume = 0.1;
-          this.cutsceneVideo.play().catch(e2 => console.error('Second click attempt failed:', e2));
-        });
-      }
-    });
+    // Visual effects
     this.screenShakeX = 0;
     this.screenShakeY = 0;
     this.redTintAlpha = 0;
     
-    // Cutscene player sprites
-    this.cutscenePlayerSprites = {
-      idle: [new Image(), new Image()],
-      running: [new Image(), new Image(), new Image(), new Image(), new Image(), new Image()],
-      attacking: [new Image(), new Image(), new Image()],
-      jumping: [new Image(), new Image(), new Image(), new Image()]
-    };
+    // Boss level effects
+    this.isBossLevel = false;
+    this.bossLevelTimer = 0;
     
-    // Load cutscene player sprites
-    this.loadCutsceneSprites();
+    // Cutscene properties
+    this.inCutscene = false;
+    this.cutsceneType = null;
+    this.cutsceneTimer = 0;
+    this.dialogueIndex = 0;
+    this.playerRunning = false;
+    this.playerTargetX = 0;
+    this.devilDialogue = [];
+    this.altarBackground = null;
+    this.cutsceneVideo = null;
+    this._spacePressed = false; // Track space key state for cutscenes
+    this._qPressed = false; // Track Q key state for heart sacrifice
+    this._qPressed = false; // Track Q key state for heart sacrifice
     
-    requestAnimationFrame(this.loop);
-  }
-
-  loadCutsceneSprites() {
-    // Load Normal Idle sprites
-    this.cutscenePlayerSprites.idle[0].src = 'assets/player/Normal Idle/0.png';
-    this.cutscenePlayerSprites.idle[1].src = 'assets/player/Normal Idle/1.png';
-    
-    // Load Normal Run sprites
-    this.cutscenePlayerSprites.running[0].src = 'assets/player/Normal Run/daydream_assets-4.png.png';
-    this.cutscenePlayerSprites.running[1].src = 'assets/player/Normal Run/daydream_assets-5.png.png';
-    this.cutscenePlayerSprites.running[2].src = 'assets/player/Normal Run/daydream_assets-6.png.png';
-    this.cutscenePlayerSprites.running[3].src = 'assets/player/Normal Run/daydream_assets-7.png.png';
-    this.cutscenePlayerSprites.running[4].src = 'assets/player/Normal Run/daydream_assets-8.png.png';
-    this.cutscenePlayerSprites.running[5].src = 'assets/player/Normal Run/daydream_assets-9.png.png';
-    
-    // Load Normal Attack sprites
-    this.cutscenePlayerSprites.attacking[0].src = 'assets/player/Normal Attack/0.png';
-    this.cutscenePlayerSprites.attacking[1].src = 'assets/player/Normal Attack/1.png';
-    this.cutscenePlayerSprites.attacking[2].src = 'assets/player/Normal Attack/2.png';
-    
-    // Load Normal Jump sprites
-    this.cutscenePlayerSprites.jumping[0].src = 'assets/player/Normal Jump/daydream_assets-10.png.png';
-    this.cutscenePlayerSprites.jumping[1].src = 'assets/player/Normal Jump/daydream_assets-11.png.png';
-    this.cutscenePlayerSprites.jumping[2].src = 'assets/player/Normal Jump/daydream_assets-12.png.png';
-    this.cutscenePlayerSprites.jumping[3].src = 'assets/player/Normal Jump/daydream_assets-13.png.png';
-  }
-
-  loadLevel(levelIdx) {
-    const level = this.levels[levelIdx];
-    this.platforms = level.platforms.map(p => new Platform(p.x, p.y, p.width, p.height));
-    this.hazards = level.hazards.map(h => new Hazard(h.x, h.y, h.width, h.height));
-    this.ladders = level.ladders ? level.ladders.map(l => new Ladder(l.x, l.y, l.width, l.height)) : [];
-    
-    // Clear all projectiles and effects when loading new level
-    this.shockwaves = [];
+    // Game entities arrays
+    this.platforms = [];
+    this.movingPlatforms = [];
+    this.hazards = [];
+    this.ladders = [];
+    this.enemies = [];
     this.fireballs = [];
     this.iceShards = [];
     this.healingWaves = [];
-    this.explosions = [];
     this.arrows = [];
+    this.explosions = [];
     this.asteroids = [];
     this.lasers = [];
+    this.shockwaves = [];
     
-  this.enemies = level.enemies.map(e => {
-    if (e.superBoss) {
-      return new SuperBoss(e.x, e.y);
-    } else if (e.boss) {
-      return new BossEnemy(e.x, e.y);
-    } else {
-      return new Enemy(e.x, e.y);
-    }
-  });
-  
-    // Set hearts based on level: Level 1 = 5 hearts, Level 2 = 10 hearts, Level 3 = 15 hearts (Final Level)
-    // BUT if altar sacrifice was completed, Level 3 should stay at 3 hearts with max 3
-    let heartsForLevel;
-    switch (levelIdx) {
-      case 0: // Level 1
-        heartsForLevel = 5;
-        break;
-      case 1: // Level 2
-        heartsForLevel = 10;
-        break;
-      case 2: // Level 3 (Final Level)
-        if (this.altarSacrificeCompleted) {
-          heartsForLevel = 3; // Keep sacrifice hearts
-        } else {
-          heartsForLevel = 15; // Default if somehow skipped cutscene
-        }
-        break;
-      default: // Any additional levels default to 5 hearts
-        heartsForLevel = 5;
-        break;
-    }
+    // Background
+    this.backgroundImage = new Image();
+    this.backgroundLoaded = false;
+    this.backgroundImage.onload = () => this.backgroundLoaded = true;
+    this.backgroundImage.src = 'assets/ui/doubleedge_background.gif';
     
-    if (!this.player) {
-      this.player = new Player(level.playerStart.x, level.playerStart.y);
-      this.player.hearts = heartsForLevel;
-      this.player.maxHearts = heartsForLevel;
-      this.ui = new UI(this.player);
-      this.initFullscreen();
-    } else {
-      this.player.x = level.playerStart.x;
-      this.player.y = level.playerStart.y;
-      this.player.vx = 0;
-      this.player.vy = 0;
-      this.player.onGround = false;
-      this.player.jumps = 0;
-      // Update hearts when progressing to a new level
-      this.player.hearts = heartsForLevel;
-      this.player.maxHearts = heartsForLevel;
-      // Reset power-ups to avoid speed issues
-      this.player.powerUp = null;
-      this.player.powerUpTimer = 0;
-    }
-    this.levelComplete = false;
-    this.gameOver = false;
-  }
-  initFullscreen() {
-    const btn = document.getElementById('fullscreen-btn');
-    btn.addEventListener('click', () => {
-      const elem = document.documentElement;
-      if (elem.requestFullscreen) {
-        elem.requestFullscreen();
-      } else if (elem.webkitRequestFullscreen) {
-        elem.webkitRequestFullscreen();
-      } else if (elem.msRequestFullscreen) {
-        elem.msRequestFullscreen();
-      }
-    });
-  }
-  
-  findNearestEnemy() {
-    if (this.enemies.length === 0) return null;
+    // Tile images for platforms
+    this.tileTopImage = new Image();
+    this.tileBottomImage = new Image();
+    this.tileTopLoaded = false;
+    this.tileBottomLoaded = false;
+    this.tileTopImage.onload = () => this.tileTopLoaded = true;
+    this.tileBottomImage.onload = () => this.tileBottomLoaded = true;
+    this.tileTopImage.src = 'assets/ui/1.png'; // Surface tiles (exposed to air)
+    this.tileBottomImage.src = 'assets/ui/0.png'; // Underground tiles
     
-    let nearestEnemy = null;
-    let shortestDistance = Infinity;
+    // Unlock system
+    this.roadUnlocks = {
+      weapons: ['sword'], // Start with sword unlocked
+      levels: [0] // Start with level 1 unlocked
+    };
+    this.newWeaponUnlocked = null;
     
-    for (let enemy of this.enemies) {
-      let dx = enemy.x - this.player.x;
-      let dy = enemy.y - this.player.y;
-      let distance = Math.sqrt(dx * dx + dy * dy);
-      
-      if (distance < shortestDistance) {
-        shortestDistance = distance;
-        nearestEnemy = enemy;
-      }
-    }
+    // Load saved unlocks
+    this.loadUnlocks();
     
-    return nearestEnemy;
-  }
-  
-  initInput() {
-    window.addEventListener('keydown', e => {
-      if ((e.code === 'KeyE') && this.player.hearts > 1 && this.player.powerUpCooldown <= 0) {
-        this.player.hearts--;
-        
-        // 30% chance of negative effect
-        if (Math.random() < 0.3) {
-          // Get currently unlocked weapons from the main unlock system
-          const unlockedWeapons = [...this.roadUnlocks.weapons]; // Copy array
-          
-          if (unlockedWeapons.length > 1) {
-            // Remove a random weapon (but not if it's the only one)
-            const randomIndex = Math.floor(Math.random() * unlockedWeapons.length);
-            const randomWeapon = unlockedWeapons[randomIndex];
-            
-            // Remove from roadUnlocks instead of localStorage
-            this.roadUnlocks.weapons = this.roadUnlocks.weapons.filter(w => w !== randomWeapon);
-            this.saveUnlocks(); // Save the updated unlocks
-            
-            // If current weapon was removed, switch to first available (sword is always available)
-            if (this.player.weapon === randomWeapon) {
-              this.player.weapon = this.roadUnlocks.weapons[0] || 'sword';
-            }
-            
-            showNotification(`Lost ${randomWeapon} weapon!`, '#ff4444');
-          } else {
-            // Apply slowness debuff
-            this.player.velocity.max = Math.max(2, this.player.velocity.max - 2);
-            this.player.jumpHeight = Math.max(8, this.player.jumpHeight - 2);
-            showNotification('Cursed with slowness!', '#ff4444');
-          }
-          this.player.powerUpCooldown = 60; // Still apply cooldown
-        } else {
-          // Normal positive power-up (70% chance)
-          let p = getRandomPowerUp();
-          this.player.startPowerUp(p);
-          if (p === 'shockwave') {
-            // Add visible shockwave effect (made bigger)
-            this.shockwaves.push(new Shockwave(this.player.x + this.player.width / 2, this.player.y + this.player.height / 2, 120, 40));
-            for (let enemy of this.enemies) {
-              if (Math.abs(enemy.x - this.player.x) < 150) {
-                // Calculate knockback direction based on enemy position relative to player
-                let knockDirection = enemy.x > this.player.x ? 'right' : 'left';
-                enemy.takeDamage(2, knockDirection);
-                enemy.stunned = 30; // 0.5 seconds at 60fps
-              }
-            }
-          }
-        }
+    // Initialize UI
+    this.ui = {
+      update: () => {
+        this.updateHeartsDisplay();
       }
-      
-      // Spellcaster abilities (Z, C, R keys) - with cooldown and casting system
-      if (this.player.weapon === 'spellcaster' && this.player.spellCooldown <= 0 && !this.player.isCasting) {
-        if (e.code === 'KeyZ') {
-          // Start fireball casting
-          let nearestEnemy = this.findNearestEnemy();
-          if (nearestEnemy) {
-            this.player.isCasting = true;
-            this.player.castingTimer = 0;
-            this.player.castingSpell = 'fireball';
-            this.player.spellCooldown = 30; // 0.5 seconds at 60fps
-            this.player.shockwaveAttackFrame = 0; // Reset animation
-            this.player.shockwaveAttackFrameCounter = 0;
-          }
-        }
-        
-        if (e.code === 'KeyC') {
-          // Start ice shard casting
-          let nearestEnemy = this.findNearestEnemy();
-          if (nearestEnemy) {
-            this.player.isCasting = true;
-            this.player.castingTimer = 0;
-            this.player.castingSpell = 'iceShard';
-            this.player.spellCooldown = 30; // 0.5 seconds at 60fps
-            this.player.shockwaveAttackFrame = 0; // Reset animation
-            this.player.shockwaveAttackFrameCounter = 0;
-          }
-        }
-        
-        if (e.code === 'KeyR') {
-          // Start healing wave casting (with 10-second cooldown)
-          if (this.player.healingStun <= 0 && this.player.healingCooldown <= 0) {
-            this.player.isCasting = true;
-            this.player.castingTimer = 0;
-            this.player.castingSpell = 'healingWave';
-            this.player.spellCooldown = 30; // 0.5 seconds at 60fps
-            this.player.healingCooldown = 600; // 10 seconds at 60fps
-            this.player.shockwaveAttackFrame = 0; // Reset animation
-            this.player.shockwaveAttackFrameCounter = 0;
-          }
-        }
-      }
-      
-      if (e.code === 'Escape' || e.code === 'KeyP') {
-        this.paused = !this.paused;
-      }
-      
-      // DEBUG: Press T to trigger cutscene directly
-      if (e.code === 'KeyT') {
-        console.log('T pressed - triggering cutscene directly');
-        this.inCutscene = true;
-        this.cutsceneState = 'altar-walking';
-        this.cutsceneTimer = 0;
-        this.altarPlayerX = -100;
-        this.dialogueIndex = 0;
-        this.levelComplete = false;
-        this.gameOver = false;
-        this.paused = false;
-        return;
-      }
-      
-      // DEBUG: Press U to skip cutscene and go directly to Level 3
-      if (e.code === 'KeyU') {
-        console.log('U pressed - skipping to Level 3 directly');
-        this.currentLevel = 2;
-        this.player.hearts = 3;
-        this.loadLevel(this.currentLevel);
-        this.levelComplete = false;
-        this.gameOver = false;
-        this.newWeaponUnlocked = null;
-        return;
-      }
-      
-      // DEBUG: Press Y to set up Level 2 completion
-      if (e.code === 'KeyY') {
-        console.log('Y pressed - setting up Level 2 completion');
-        this.currentLevel = 1;
-        this.levelComplete = true;
-        this.enemies = [];
-        return;
-      }
-      
-      // Cutscene input handling
-      if (this.inCutscene) {
-        if (this.cutsceneState === 'altar-dialogue') {
-          // Advance dialogue on any click or enter
-          this.dialogueIndex++;
-          if (this.dialogueIndex >= this.dialogues.length) {
-            this.cutsceneState = 'altar-sacrifice';
-          }
-        } else if (this.cutsceneState === 'altar-sacrifice' && e.code === 'KeyQ') {
-          // Sacrifice hearts and start Level 3
-          this.player.hearts = 3; // Set hearts to 3
-          this.player.maxHearts = 3; // Also cap max hearts to 3
-          this.altarSacrificeCompleted = true; // Mark sacrifice as completed
-          this.inCutscene = false;
-          this.cutsceneState = 'none';
-          
-          // Stop cutscene video
-          if (this.videoPlaying) {
-            this.cutsceneVideo.pause();
-            this.videoPlaying = false;
-            console.log('Cutscene video stopped');
-          }
-          
-          // Start Level 3 with screen darkening effect
-          setTimeout(() => {
-            this.currentLevel = 2;
-            this.loadLevel(this.currentLevel);
-            this.levelComplete = false;
-            this.gameOver = false;
-            this.newWeaponUnlocked = null;
-            requestAnimationFrame(this.loop);
-          }, 1000);
-        }
-        return; // Don't process other inputs during cutscene
-      }
-      
-      // Debug: Log all N key presses
-      if (e.code === 'KeyN') {
-        console.log('N key detected - currentLevel:', this.currentLevel, 'levelComplete:', this.levelComplete);
-      }
-      
-      // Handle N key for level progression
-      if (e.code === 'KeyN' && this.levelComplete && this.currentLevel < this.levels.length - 1) {
-        console.log('N key pressed - advancing level from', this.currentLevel);
-        console.log('levelComplete:', this.levelComplete);
-        console.log('levels.length:', this.levels.length);
-        
-        if (this.currentLevel === 1) {
-          // Start altar cutscene before Level 3
-          console.log('Starting altar cutscene - currentLevel is 1 (Level 2)');
-          this.inCutscene = true;
-          this.cutsceneState = 'altar-walking';
-          this.cutsceneTimer = 0;
-          this.altarPlayerX = -100;
-          this.dialogueIndex = 0;
-          this.levelComplete = false;
-          console.log('Cutscene started - inCutscene:', this.inCutscene, 'cutsceneState:', this.cutsceneState);
-        } else {
-          // Normal level progression
-          console.log('Normal level progression - advancing to level', this.currentLevel + 1);
-          this.currentLevel++;
-          this.player.ammo = this.player.maxAmmo;
-          this.loadLevel(this.currentLevel);
-          this.levelComplete = false;
-          this.gameOver = false;
-          this.newWeaponUnlocked = null;
-          requestAnimationFrame(this.loop);
-        }
-        return;
-      }
-    });
+    };
     
-    // Add mouse click handling for cutscene dialogue
-    this.canvas.addEventListener('click', () => {
-      if (this.inCutscene && this.cutsceneState === 'altar-dialogue') {
-        this.dialogueIndex++;
-        if (this.dialogueIndex >= this.dialogues.length) {
-          this.cutsceneState = 'altar-sacrifice';
-        }
-      }
-    });
-  }
-  
-  startCutsceneVideo() {
-    if (!this.videoLoaded || this.videoPlaying) return;
+    // Set up input handling
+    this.initInput();
     
-    console.log('Starting cutscene video...');
-    this.cutsceneVideo.currentTime = 0;
+    // Load the first level and start the game
+    this.loadLevel(0);
     
-    // Try multiple approaches to start the video
-    const playPromise = this.cutsceneVideo.play();
+    // Make game instance globally available for platform rendering
+    window.game = this;
     
-    if (playPromise !== undefined) {
-      playPromise.then(() => {
-        console.log('Video started successfully');
-        this.videoPlaying = true;
-      }).catch(error => {
-        console.error('Autoplay prevented:', error);
-        // Set flag to try again on next user interaction
-        this.videoForcePlay = true;
-      });
-    } else {
-      // Fallback for older browsers
-      try {
-        this.cutsceneVideo.play();
-        this.videoPlaying = true;
-      } catch (e) {
-        console.error('Video play failed:', e);
-        this.videoForcePlay = true;
-      }
-    }
-  }
-  
-  loop(currentTime = 0) {
-    // Framerate limiting for all levels (60 FPS)
-    const deltaTime = currentTime - this.lastFrameTime;
-    if (deltaTime < this.frameInterval) {
-      requestAnimationFrame(this.loop);
-      return;
-    }
-    this.lastFrameTime = currentTime - (deltaTime % this.frameInterval);
-    
-    this.frameCount++;
-    
-    if (this.paused) {
-      this.drawPause();
-      requestAnimationFrame(this.loop);
-      return;
-    }
-    if (this.gameOver) {
-      this.drawGameOver();
-      return;
-    }
-    if (this.inCutscene) {
-      this.updateCutscene();
-      this.drawAltarCutscene();
-      requestAnimationFrame(this.loop);
-      return;
-    }
-    
-    // Handle level completion - full screen pause for all levels
-    if (this.levelComplete) {
-      // Check for N key for Level 1 completion
-      if (this.currentLevel === 0 && this.input.isDown('KeyN') && !this.nKeyPressed) {
-        console.log('N key detected - Level 1 → Level 2');
-        this.nKeyPressed = true;
-        this.currentLevel++;
-        this.player.ammo = this.player.maxAmmo;
-        this.loadLevel(this.currentLevel);
-        this.levelComplete = false;
-        this.gameOver = false;
-        this.newWeaponUnlocked = null;
-        requestAnimationFrame(this.loop);
-        return;
-      }
-      
-      // Check for T key for Level 2 completion
-      if (this.currentLevel === 1 && this.input.isDown('KeyT')) {
-        console.log('T key detected - Level 2 → Altar Cutscene → Level 3');
-        this.inCutscene = true;
-        this.cutsceneState = 'altar-walking';
-        this.cutsceneTimer = 0;
-        this.altarPlayerX = -100;
-        this.dialogueIndex = 0;
-        this.levelComplete = false;
-        
-        // Force video to play immediately on user interaction (T key press)
-        console.log('Forcing video play immediately on T key press');
-        if (this.videoLoaded) {
-          this.cutsceneVideo.currentTime = 0;
-          this.cutsceneVideo.muted = true; // Ensure muted
-          
-          // Force play with multiple attempts
-          const forcePlay = () => {
-            console.log('Attempting video play...');
-            const playPromise = this.cutsceneVideo.play();
-            
-            if (playPromise !== undefined) {
-              playPromise.then(() => {
-                console.log('✓ Video playing successfully');
-                this.videoPlaying = true;
-              }).catch(error => {
-                console.error('✗ Video play failed:', error.name, error.message);
-                // Try unmuting and playing (sometimes helps)
-                this.cutsceneVideo.muted = false;
-                this.cutsceneVideo.volume = 0;
-                this.cutsceneVideo.play().catch(e => console.error('Second attempt failed:', e));
-              });
-            }
-          };
-          
-          // Try immediately and also after a short delay
-          forcePlay();
-          setTimeout(forcePlay, 50);
-          setTimeout(forcePlay, 200);
-        } else {
-          console.error('Video not loaded when T key pressed');
-        }
-        return;
-      }
-      
-      // Reset key flags when released
-      if (!this.input.isDown('KeyN')) {
-        this.nKeyPressed = false;
-      }
-      
-      // Draw full screen level complete for all levels
-      this.drawLevelComplete();
-      requestAnimationFrame(this.loop);
-      return;
-    }
-    
-    // Continue normal game loop when level is not complete
-    this.update();
-    this.draw();
-    
+    // Start the game loop
+    this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
   }
+
   update() {
-    // Handle cutscene logic first
+    // Handle cutscene logic
     if (this.inCutscene) {
       this.updateCutscene();
       return;
     }
     
-    this.player.update(this.input, this.platforms, this.hazards, this.enemies, this.ladders);
+    // Boss level effects
+    if (this.isBossLevel) {
+      this.bossLevelTimer++;
+      
+      // Constant screen shake
+      this.screenShakeX = (Math.random() - 0.5) * 8;
+      this.screenShakeY = (Math.random() - 0.5) * 8;
+      
+      // Pulsing red tint
+      this.redTintAlpha = 0.15 + Math.sin(this.bossLevelTimer * 0.1) * 0.1;
+    }
     
-    // Check if player completed casting and release spell
+    // Always update player and entities
+    this.player.update(this.input, this.platforms.concat(this.movingPlatforms), this.hazards, this.enemies, this.ladders);
+    
+    // Update moving platforms
+    for (let movingPlatform of this.movingPlatforms) {
+      movingPlatform.update();
+    }
+
+    // Handle spell casting completion
     if (this.player.completeCasting) {
       let spellResult = this.player.releaseSpell(this);
       if (spellResult && spellResult.spell) {
@@ -3145,13 +2480,14 @@ class Game {
       }
       this.player.completeCasting = false;
     }
-    
-    // Check if player released an arrow
+
+    // Handle arrow creation
     let arrow = this.player.createArrow();
     if (arrow) {
       this.arrows.push(arrow);
     }
-    
+
+    // Enemy updates and combat
     let killedThisFrame = 0;
     for (let enemy of this.enemies) {
       if (enemy instanceof BossEnemy || enemy instanceof SuperBoss) {
@@ -3159,18 +2495,14 @@ class Game {
       } else {
         enemy.update(this.player, this.platforms, this.ladders);
       }
-      // Player attack (directional)
       if (enemy.attackedBy(this.player) && !this.player._attackHit) {
         let dmg = this.player.powerUp === 'damage' ? 2 : 1;
         enemy.takeDamage(dmg, this.player.facing);
         this.player._attackHit = true;
-        
-        // Set attack momentum for forward movement (sword only)
         if (this.player.weapon === 'sword') {
           let kb = this.player.facing === 'right' ? 10 : -10;
           this.player.attackMomentum = kb;
-          this.player.attackMomentumTimer = 8; // 8 frames of momentum (about 0.13 seconds at 60fps)
-          // Clear previous dash hit tracking for new dash
+          this.player.attackMomentumTimer = 8;
           if (this.player.dashHitEnemies) {
             this.player.dashHitEnemies.clear();
           }
@@ -3180,45 +2512,36 @@ class Game {
         killedThisFrame++;
       }
     }
-    
-    // Sword dash damage - deal damage to enemies while dashing
+
+    // Handle dash attacks with sword
     if (this.player.isDashing && this.player.weapon === 'sword') {
       for (let enemy of this.enemies) {
         if (enemy.isDead()) continue;
-        
-        // Check collision during dash
         if (this.player.x < enemy.x + enemy.width && this.player.x + this.player.width > enemy.x &&
             this.player.y < enemy.y + enemy.height && this.player.y + this.player.height > enemy.y) {
-          
-          // Only damage each enemy once per dash
           if (!this.player.dashHitEnemies) {
             this.player.dashHitEnemies = new Set();
           }
-          
           if (!this.player.dashHitEnemies.has(enemy)) {
-            let dmg = this.player.powerUp === 'damage' ? 2 : 1; // Dash damage is lower than regular attack
+            let dmg = this.player.powerUp === 'damage' ? 2 : 1;
             enemy.takeDamage(dmg, this.player.facing);
             this.player.dashHitEnemies.add(enemy);
-            
-            // Visual feedback
             enemy.stunned = Math.max(enemy.stunned, 10);
           }
         }
       }
     }
-    
-    // Clear dash hit tracking when dash ends
+
     if (!this.player.isDashing && this.player.dashHitEnemies) {
       this.player.dashHitEnemies.clear();
     }
-    
-    // Remove dead enemies
+
+    // Remove dead enemies and handle heart gain
     let prevCount = this.enemies.length;
     this.enemies = this.enemies.filter(e => !e.isDead());
     let killed = prevCount - this.enemies.length;
     if (killed > 0) {
       this.enemiesKilled += killed;
-      // For every 5 enemies killed, gain 1 heart if under max
       let heartsToAdd = Math.floor(this.enemiesKilled / 5);
       if (heartsToAdd > 0 && this.player.hearts < this.player.maxHearts) {
         this.player.hearts = Math.min(this.player.hearts + heartsToAdd, this.player.maxHearts);
@@ -3226,19 +2549,19 @@ class Game {
         playSound('heartGain');
       }
     }
-    // Hazards
+
+    // Hazard damage
     for (let hazard of this.hazards) {
       if (hazard.collides(this.player)) {
         this.player.takeDamage(1);
       }
     }
-    // Update shockwaves
+
+    // Update effects and projectiles
     this.shockwaves = this.shockwaves.filter(sw => {
       sw.update();
       return !sw.isDone();
     });
-    
-    // Update spells
     this.fireballs = this.fireballs.filter(fireball => {
       let explosion = fireball.update(this.platforms, this.enemies, this.player);
       if (explosion) {
@@ -3246,166 +2569,58 @@ class Game {
       }
       return !fireball.isDone();
     });
-    
     this.iceShards = this.iceShards.filter(iceShard => {
       iceShard.update(this.platforms, this.enemies, this.player);
       return !iceShard.isDone();
     });
-    
     this.healingWaves = this.healingWaves.filter(wave => {
       wave.update(this.enemies, this.player);
       return !wave.isDone();
     });
-    
-    // Update arrows
     this.arrows = this.arrows.filter(arrow => {
       arrow.update(this.platforms, this.enemies, this.player);
       return !arrow.isDone();
     });
-    
-    // Update explosions
     this.explosions = this.explosions.filter(explosion => {
       explosion.update();
       return !explosion.isDone();
     });
-    
-    // Update asteroids
     this.asteroids = this.asteroids.filter(asteroid => {
       asteroid.update(this.platforms);
-      // Check collision with player
       if (asteroid.collides(this.player)) {
-        this.player.takeDamage(2); // Asteroids deal 2 damage
-        return false; // Remove asteroid after hit
+        this.player.takeDamage(2);
+        return false;
       }
       return !asteroid.isDone();
     });
-    
-    // Update lasers
     this.lasers = this.lasers.filter(laser => {
       laser.update();
-      // Check collision with player
       if (laser.collides(this.player)) {
-        this.player.takeDamage(3); // Lasers deal 3 damage
-        return false; // Remove laser after hit
+        this.player.takeDamage(3);
+        return false;
       }
       return !laser.isDone();
     });
-    
+
     // Level complete condition
-    if (this.currentLevel >= 2) { // Boss level (Level 3 - Final Level)
-      // Level completes when all boss-type enemies are defeated
+    if (this.currentLevel >= 2) {
       let remainingBosses = this.enemies.filter(e => 
         e.constructor.name === 'BossEnemy' || e.constructor.name === 'SuperBoss'
       );
-      
       if (remainingBosses.length === 0) {
         this.levelComplete = true;
         this.unlockWeaponForLevel(this.currentLevel);
       }
     } else {
-      // Regular levels complete when all enemies are defeated
       if (this.enemies.length === 0) {
         this.levelComplete = true;
         this.unlockWeaponForLevel(this.currentLevel);
       }
     }
-    // Game over
     if (this.player.hearts <= 0) {
       this.gameOver = true;
     }
     this.ui.update();
-  }
-  
-  updateCutscene() {
-    this.cutsceneTimer++;
-    console.log('Updating cutscene:', this.cutsceneState, 'Timer:', this.cutsceneTimer);
-    
-    switch (this.cutsceneState) {
-      case 'altar-walking':
-        // Move player from left to center
-        this.altarPlayerX += 2;
-        if (this.altarPlayerX >= 390) {
-          this.altarPlayerX = 390;
-          this.cutsceneState = 'altar-dialogue';
-          this.dialogueIndex = 0;
-          console.log('Switched to dialogue state');
-        }
-        break;
-        
-      case 'altar-dialogue':
-        // Wait for click to advance dialogue
-        break;
-        
-      case 'altar-sacrifice':
-        // Wait for Q key press
-        break;
-    }
-  }
-  
-  draw() {
-    // Apply Level 3 screen shake and red tint if active
-    this.ctx.save();
-    if (this.currentLevel === 2) {
-      this.screenShakeX = (Math.random() - 0.5) * 6;
-      this.screenShakeY = (Math.random() - 0.5) * 6;
-      this.redTintAlpha = 0.15;
-      this.ctx.translate(this.screenShakeX, this.screenShakeY);
-    }
-    
-    // Clear
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    
-    // Background - use custom background image for levels 1, 2, and 3
-    if (this.backgroundLoaded && (this.currentLevel === 0 || this.currentLevel === 1 || this.currentLevel === 2)) {
-      // Scale and draw the background to fill the entire canvas
-      this.ctx.drawImage(this.backgroundImage, 0, 0, this.canvas.width, this.canvas.height);
-    } else {
-      // Fallback to solid color background
-      this.ctx.fillStyle = '#222';
-      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    }
-    // Shockwaves
-    for (let sw of this.shockwaves) sw.draw(this.ctx);
-    // Spells
-    for (let fireball of this.fireballs) fireball.draw(this.ctx);
-    for (let iceShard of this.iceShards) iceShard.draw(this.ctx);
-    for (let wave of this.healingWaves) wave.draw(this.ctx);
-    // Arrows
-    for (let arrow of this.arrows) arrow.draw(this.ctx);
-    // Explosions
-    for (let explosion of this.explosions) explosion.draw(this.ctx);
-    // Asteroids
-    for (let asteroid of this.asteroids) asteroid.draw(this.ctx);
-    // Lasers
-    for (let laser of this.lasers) laser.draw(this.ctx);
-    // Platforms
-    for (let p of this.platforms) p.draw(this.ctx);
-    // Hazards
-    for (let h of this.hazards) h.draw(this.ctx);
-    // Ladders
-    for (let l of this.ladders || []) l.draw(this.ctx);
-    // Enemies
-    for (let e of this.enemies) e.draw(this.ctx);
-    // Player
-    this.player.draw(this.ctx);
-    
-    // Debug information overlay
-    this.ctx.fillStyle = '#ffffff';
-    this.ctx.font = '16px Arial';
-    this.ctx.fillText(`Level: ${this.currentLevel + 1}`, 10, 30);
-    this.ctx.fillText(`Level Complete: ${this.levelComplete}`, 10, 50);
-    this.ctx.fillText(`In Cutscene: ${this.inCutscene}`, 10, 70);
-    this.ctx.fillText(`Cutscene State: ${this.cutsceneState}`, 10, 90);
-    this.ctx.fillText(`Enemies: ${this.enemies.length}`, 10, 110);
-    
-    // Apply red tint overlay for Level 3
-    if (this.currentLevel === 2 && this.redTintAlpha > 0) {
-      this.ctx.fillStyle = `rgba(255, 0, 0, ${this.redTintAlpha})`;
-      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    }
-    
-    // Restore context (undo screen shake)
-    this.ctx.restore();
   }
   setupPixelArtText(size = 48, color = '#fff') {
     this.ctx.font = `${size}px "Press Start 2P", "Courier New", monospace`;
@@ -3420,266 +2635,46 @@ class Game {
   drawPause() {
     this.ctx.save();
     this.ctx.globalAlpha = 0.7;
-    this.ctx.fillStyle = '#000';
+    this.ctx.fillStyle = '#222';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.globalAlpha = 1;
     this.setupPixelArtText(48, '#fff');
     this.ctx.fillText('PAUSED', 300, 300);
     this.ctx.restore();
   }
-  
-  drawAltarCutscene() {
-    // Clear screen with dark background
-    this.ctx.fillStyle = '#1a0e1e';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    
-    // Draw video FIRST (behind everything else) - properly scaled without stretching
-    if (this.videoLoaded && this.cutsceneVideo.readyState >= 2) {
-      // Try to ensure video is playing if it should be
-      if (this.inCutscene && this.cutsceneVideo.paused) {
-        console.log('Video is paused during cutscene - attempting to play');
-        this.cutsceneVideo.play().catch(e => console.log('Auto-play attempt failed:', e.name));
-      }
-      
-      // Calculate video dimensions to fit in dark area without stretching
-      const availableWidth = this.canvas.width; // 800
-      const availableHeight = 450; // Height up to light-purple floor
-      
-      // Get video's natural dimensions
-      const videoNaturalWidth = this.cutsceneVideo.videoWidth || 16; // fallback ratio
-      const videoNaturalHeight = this.cutsceneVideo.videoHeight || 9; // fallback ratio
-      const videoAspectRatio = videoNaturalWidth / videoNaturalHeight;
-      
-      // Calculate dimensions to fit without stretching
-      let videoWidth, videoHeight;
-      if (availableWidth / availableHeight > videoAspectRatio) {
-        // Available area is wider than video - fit to height
-        videoHeight = availableHeight;
-        videoWidth = videoHeight * videoAspectRatio;
-      } else {
-        // Available area is taller than video - fit to width  
-        videoWidth = availableWidth;
-        videoHeight = videoWidth / videoAspectRatio;
-      }
-      
-      // Center the video in the available area
-      const videoX = (availableWidth - videoWidth) / 2;
-      const videoY = (availableHeight - videoHeight) / 2;
-      
-      // Draw video frame without stretching
-      this.ctx.drawImage(this.cutsceneVideo, videoX, videoY, videoWidth, videoHeight);
-      
-      // Show detailed play status for debugging (moved to bottom)
-      this.ctx.fillStyle = '#fff';
-      this.ctx.font = '12px monospace';
-      this.ctx.fillText('Video State: ' + (this.cutsceneVideo.paused ? 'PAUSED' : 'PLAYING'), 10, this.canvas.height - 80);
-      this.ctx.fillText('Time: ' + this.cutsceneVideo.currentTime.toFixed(1) + 's / ' + this.cutsceneVideo.duration.toFixed(1) + 's', 10, this.canvas.height - 65);
-      this.ctx.fillText('Dimensions: ' + Math.round(videoWidth) + 'x' + Math.round(videoHeight), 10, this.canvas.height - 50);
-      
-      // If video should be playing but isn't, show instruction
-      if (this.cutsceneVideo.paused) {
-        this.ctx.fillStyle = '#ff0';
-        this.ctx.font = '16px monospace';
-        this.ctx.fillText('CLICK SCREEN TO START VIDEO', 10, this.canvas.height - 20);
-      }
-    } else {
-      // Show loading info at bottom if video not ready
-      this.ctx.fillStyle = '#fff';
-      this.ctx.font = '12px monospace';
-      if (!this.videoLoaded) {
-        this.ctx.fillText('Video loading... Please wait', 10, this.canvas.height - 50);
-        this.ctx.fillText('Network State: ' + (this.cutsceneVideo ? this.cutsceneVideo.networkState : 'N/A'), 10, this.canvas.height - 35);
-      } else {
-        this.ctx.fillText('Video loaded but not ready to play', 10, this.canvas.height - 50);
-        this.ctx.fillText('Ready State: ' + this.cutsceneVideo.readyState + ' (need 4)', 10, this.canvas.height - 35);
-      }
-    }
-    
-    // Draw stone floor ON TOP of video (no more altar elements)
-    this.ctx.fillStyle = '#2d1b2e';
-    this.ctx.fillRect(0, 450, this.canvas.width, 150);
-    
-    // Draw altar fire bowl
-    this.ctx.fillStyle = '#2a1a2a';
-    this.ctx.fillRect(375, 380, 50, 30);
-    
-    // Draw flickering fire
-    let fireOffset = Math.sin(this.frameCount * 0.2) * 5;
-    this.ctx.fillStyle = '#ff4500';
-    this.ctx.fillRect(380, 370 + fireOffset, 10, 20);
-    this.ctx.fillRect(390, 365 + fireOffset, 10, 25);
-    this.ctx.fillRect(400, 370 + fireOffset, 10, 20);
-    this.ctx.fillStyle = '#ffa500';
-    this.ctx.fillRect(385, 375 + fireOffset, 20, 10);
-    
-    // Draw torches on columns
-    this.drawTorch(265, 220);
-    this.drawTorch(535, 220);
-    
-    // Draw player walking towards altar
-    if (this.cutsceneState === 'altar-walking') {
-      // Draw walking/running sprite
-      this.drawCutscenePlayer(this.altarPlayerX, 420, 'running');
-    } else if (this.cutsceneState === 'altar-dialogue' || this.cutsceneState === 'altar-sacrifice') {
-      // Player standing at altar - draw idle sprite
-      this.drawCutscenePlayer(390, 420, 'idle');
-    }
-    
-    // Draw dialogue box if in dialogue state
-    if (this.cutsceneState === 'altar-dialogue' || this.cutsceneState === 'altar-sacrifice') {
-      this.drawDialogueBox();
-    }
-  }
-  
-  drawTorch(x, y) {
-    // Torch handle
-    this.ctx.fillStyle = '#654321';
-    this.ctx.fillRect(x, y, 5, 40);
-    
-    // Torch flame
-    let flameFlicker = Math.sin(this.frameCount * 0.3 + x) * 2;
-    this.ctx.fillStyle = '#ff4500';
-    this.ctx.fillRect(x - 2, y - 10 + flameFlicker, 9, 15);
-    this.ctx.fillStyle = '#ffa500';
-    this.ctx.fillRect(x - 1, y - 5 + flameFlicker, 7, 8);
-  }
-  
-  drawDialogueBox() {
-    // Undertale-style dialogue box at bottom of screen
-    this.ctx.fillStyle = '#000000';
-    this.ctx.fillRect(50, 480, 700, 100);
-    
-    // White border
-    this.ctx.strokeStyle = '#ffffff';
-    this.ctx.lineWidth = 3;
-    this.ctx.strokeRect(50, 480, 700, 100);
-    
-    // Inner dialogue area
-    this.ctx.fillStyle = '#ffffff';
-    this.ctx.fillRect(60, 490, 680, 80);
-    this.ctx.fillStyle = '#000000';
-    this.ctx.fillRect(65, 495, 670, 70);
-    
-    // Draw current dialogue text
-    this.ctx.fillStyle = '#ffffff';
-    this.ctx.font = 'bold 20px monospace';
-    this.ctx.textAlign = 'center';
-    
-    let currentDialogue = this.dialogues[this.dialogueIndex];
-    if (currentDialogue === undefined || currentDialogue === null) {
-      currentDialogue = "THE ALTAR IS WAITING";
-    }
-    this.ctx.fillText(currentDialogue, 400, 540);
-    
-    // Show interaction prompt
-    if (this.cutsceneState === 'altar-sacrifice') {
-      this.ctx.font = 'bold 16px monospace';
-      this.ctx.fillStyle = '#ffff00';
-      this.ctx.fillText('Press Q to sacrifice your hearts', 400, 563);
-    } else {
-      this.ctx.font = 'bold 16px monospace';
-      this.ctx.fillStyle = '#aaaaaa';
-      this.ctx.fillText('Click to continue', 400, 565);
-    }
-  }
-  
-  drawCutscenePlayer(x, y, animationType) {
-    let currentImage = null;
-    let spriteArray = [];
-    
-    // Get the appropriate sprite array based on animation type
-    switch (animationType) {
-      case 'idle':
-        spriteArray = this.cutscenePlayerSprites.idle;
-        break;
-      case 'running':
-        spriteArray = this.cutscenePlayerSprites.running;
-        break;
-      case 'attacking':
-        spriteArray = this.cutscenePlayerSprites.attacking;
-        break;
-      case 'jumping':
-        spriteArray = this.cutscenePlayerSprites.jumping;
-        break;
-    }
-    
-    // Calculate current frame based on animation type
-    let frameSpeed = 8; // Default frame speed
-    if (animationType === 'idle') frameSpeed = 30; // Slower for idle
-    if (animationType === 'running') frameSpeed = 8; // Normal speed for running
-    
-    let currentFrame = Math.floor(this.frameCount / frameSpeed) % spriteArray.length;
-    currentImage = spriteArray[currentFrame];
-    
-    // Draw the sprite if loaded, otherwise use fallback
-    if (currentImage && currentImage.complete && currentImage.naturalWidth > 0) {
-      this.ctx.save();
-      
-      // Scale and position the sprite
-      const spriteWidth = 32;  // Match the player's actual width
-      const spriteHeight = 48; // Match the player's actual height
-      
-      this.ctx.drawImage(currentImage, x, y, spriteWidth, spriteHeight);
-      this.ctx.restore();
-    } else {
-      // Fallback to colored rectangle if sprite not loaded yet
-      this.ctx.fillStyle = '#4169e1';
-      this.ctx.fillRect(x, y, 20, 30);
-    }
-  }
   drawGameOver() {
-    this.ctx.save();
-    this.ctx.globalAlpha = 0.8;
-    this.ctx.fillStyle = '#000';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    this.ctx.globalAlpha = 1;
-    this.setupPixelArtText(48, '#f00');
-    this.ctx.fillText('GAME OVER', 240, 300);
-    this.ctx.restore();
+  this.ctx.save();
+  this.ctx.globalAlpha = 0.8;
+  this.ctx.fillStyle = '#000';
+  this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+  this.ctx.globalAlpha = 1;
+  this.setupPixelArtText(48, '#f00');
+  this.ctx.textAlign = 'center';
+  this.ctx.textBaseline = 'middle';
+  this.ctx.fillText('GAME OVER', this.canvas.width / 2, this.canvas.height / 2);
+  this.ctx.restore();
   }
   drawLevelComplete() {
     this.ctx.save();
-    this.ctx.globalAlpha = 0.8;
-    this.ctx.fillStyle = '#000';
+    this.ctx.globalAlpha = 0.7;
+    this.ctx.fillStyle = '#222'; // Force grayish-black overlay
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.globalAlpha = 1;
-    
-    // Center "LEVEL COMPLETE!" text
-    this.setupPixelArtText(42, '#0f0');
+    this.setupPixelArtText(42, '#fff');
     this.ctx.textAlign = 'center';
     this.ctx.fillText('LEVEL COMPLETE!', this.canvas.width / 2, 300);
-    
-    // Center next level instruction
-    this.setupPixelArtText(24, '#0f0');
+    this.setupPixelArtText(24, '#ff0');
     this.ctx.textAlign = 'center';
-    if (this.currentLevel < this.levels.length - 1) {
-      if (this.currentLevel === 1) {
-        // Special message for Level 2 completion (going to Level 3 with cutscene)
-        this.ctx.fillText('Press T to go to the next stage', this.canvas.width / 2, 350);
-      } else {
-        // Normal message for other levels
-        this.ctx.fillText('Press N for Next Level', this.canvas.width / 2, 350);
-      }
-    } else {
-      this.ctx.fillText('All levels complete!', this.canvas.width / 2, 350);
-    }
+    this.ctx.fillText('Press N for Next Level', this.canvas.width / 2, 350);
+    this.ctx.restore();
     
-    // Center weapon unlock notification
+    // Weapon unlock notification (if any)
     if (this.newWeaponUnlocked) {
-      this.setupPixelArtText(20, '#ff0'); // Yellow text
+      this.setupPixelArtText(14, '#ff0');
       this.ctx.textAlign = 'center';
       const weaponName = this.newWeaponUnlocked.charAt(0).toUpperCase() + this.newWeaponUnlocked.slice(1);
-      this.ctx.fillText(`NEW WEAPON UNLOCKED: ${weaponName}!`, this.canvas.width / 2, 400);
-      
-      // Center the border box around the text
-      const textWidth = this.ctx.measureText(`NEW WEAPON UNLOCKED: ${weaponName}!`).width;
-      this.ctx.strokeStyle = '#ff0';
-      this.ctx.lineWidth = 2;
-      this.ctx.strokeRect((this.canvas.width - textWidth) / 2 - 10, 375, textWidth + 20, 35);
+      this.ctx.fillText(`NEW WEAPON: ${weaponName}!`, this.canvas.width / 2, 85);
     }
-    
-    this.ctx.restore();
-    // TODO: Implement unlock menu
   }
   
   drawLevelCompleteOverlay() {
@@ -3699,25 +2694,7 @@ class Game {
     // Next level instruction
     this.setupPixelArtText(18, '#0f0');
     this.ctx.textAlign = 'center';
-    if (this.currentLevel < this.levels.length - 1) {
-      if (this.currentLevel === 1) {
-        // Special message for Level 2 completion (going to Level 3 with cutscene)
-        this.ctx.fillText('Press T to go to the next level', this.canvas.width / 2, 65);
-      } else {
-        // Normal message for other levels
-        this.ctx.fillText('Press N for Next Level', this.canvas.width / 2, 65);
-      }
-    } else {
-      this.ctx.fillText('All levels complete!', this.canvas.width / 2, 65);
-    }
-    
-    // Weapon unlock notification (if any)
-    if (this.newWeaponUnlocked) {
-      this.setupPixelArtText(14, '#ff0');
-      this.ctx.textAlign = 'center';
-      const weaponName = this.newWeaponUnlocked.charAt(0).toUpperCase() + this.newWeaponUnlocked.slice(1);
-      this.ctx.fillText(`NEW WEAPON: ${weaponName}!`, this.canvas.width / 2, 85);
-    }
+    this.ctx.fillText('Press N for Next Level', this.canvas.width / 2, 65);
     
     this.ctx.restore();
   }
@@ -3754,94 +2731,472 @@ class Game {
   }
   
   reset() {
-    
-    // Reset to Level 1
     this.currentLevel = 0;
-    
-    // Reset weapon unlocks to just sword
-    this.roadUnlocks = { outfits: [], weapons: ['sword'], lore: [] };
-    this.saveUnlocks();
-    
-    // Reset player weapon to sword and all stats
-    if (this.player) {
-      this.player.weapon = 'sword';
-      // Reset player stats completely
-      this.player.hearts = 5; // Starting hearts for Level 1
-      this.player.maxHearts = 5; // Reset max hearts
-      this.player.energy.current = this.player.energy.max;
-      this.player.magicMeter = 3; // Reset magic meter
-      this.player.bowCharge = 0; // Reset bow charge
-      this.player.spellCooldown = 0; // Reset spell cooldown
-      this.player.attackCooldown = 0; // Reset attack cooldown
-      // Reset player position will be handled by loadLevel
-    }
-    
-    // Clear any weapon unlock notifications
-    this.newWeaponUnlocked = null;
-    
-    // Reset cutscene and progression states
-    this.inCutscene = false;
-    this.cutsceneState = 'none';
-    this.cutsceneTimer = 0;
-    this.altarPlayerX = -100;
-    this.altarSacrificeCompleted = false; // Critical: reset altar sacrifice
-    this.nKeyPressed = false;
-    this.dialogueIndex = 0;
-    
-    // Reset enemies killed counter
-    this.enemiesKilled = 0;
-    
-    // Clear all projectiles and effects
-    this.shockwaves = [];
-    this.fireballs = [];
-    this.iceShards = [];
-    this.healingWaves = [];
-    this.explosions = [];
-    this.arrows = [];
-    this.asteroids = [];
-    this.lasers = [];
-    
-    // Reset frame counter
-    this.frameCount = 0;
-    
-    // Stop and reset cutscene video
-    if (this.cutsceneVideo && !this.cutsceneVideo.paused) {
-      this.cutsceneVideo.pause();
-      this.cutsceneVideo.currentTime = 0;
-    }
-    this.videoPlaying = false;
-    this.videoForcePlay = false;
-    
-    // Load Level 1 fresh
-    this.loadLevel(0);
-    
-    // Reset all game states
+    this.loadLevel(this.currentLevel);
     this.levelComplete = false;
     this.gameOver = false;
     this.paused = false;
-    
-    // Reset screen effects
     this.screenShakeX = 0;
     this.screenShakeY = 0;
     this.redTintAlpha = 0;
-    
-    // Reset framerate control
     this.lastFrameTime = 0;
-    
-    // Restart the game loop if it was stopped
-    if (this.gameOver) {
+    requestAnimationFrame(this.loop);
+  }
+
+  loop(currentTime = 0) {
+    if (!this.lastFrameTime) this.lastFrameTime = currentTime;
+    const frameInterval = 1000 / 60;
+    const deltaTime = currentTime - this.lastFrameTime;
+    if (deltaTime < frameInterval) {
       requestAnimationFrame(this.loop);
+      return;
+    }
+    this.lastFrameTime = currentTime;
+    this.frameCount++;
+    if (this.paused) {
+      this.drawPause();
+      requestAnimationFrame(this.loop);
+      return;
+    }
+    if (this.gameOver) {
+      this.drawGameOver();
+      requestAnimationFrame(this.loop);
+      return;
+    }
+    this.update();
+    this.draw();
+    requestAnimationFrame(this.loop);
+  }
+
+  draw() {
+    // Apply screen shake for boss level
+    if (this.isBossLevel) {
+      this.ctx.save();
+      this.ctx.translate(this.screenShakeX, this.screenShakeY);
     }
     
-    console.log('Game fully reset to initial state');
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    if (this.backgroundLoaded) {
+      this.ctx.drawImage(this.backgroundImage, 0, 0, this.canvas.width, this.canvas.height);
+    } else {
+      this.ctx.fillStyle = '#222';
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+    for (let platform of this.platforms) platform.draw(this.ctx);
+    for (let movingPlatform of this.movingPlatforms) movingPlatform.draw(this.ctx);
+    for (let hazard of this.hazards) hazard.draw(this.ctx);
+    for (let ladder of this.ladders) ladder.draw(this.ctx);
+    if (this.player) this.player.draw(this.ctx);
+    for (let enemy of this.enemies) enemy.draw(this.ctx);
+    for (let fireball of this.fireballs) fireball.draw(this.ctx);
+    for (let iceShard of this.iceShards) iceShard.draw(this.ctx);
+    for (let healingWave of this.healingWaves) healingWave.draw(this.ctx);
+    for (let explosion of this.explosions) explosion.draw(this.ctx);
+    for (let arrow of this.arrows) arrow.draw(this.ctx);
+    for (let asteroid of this.asteroids) asteroid.draw(this.ctx);
+    for (let laser of this.lasers) laser.draw(this.ctx);
+    for (let shockwave of this.shockwaves) shockwave.draw(this.ctx);
+    
+    // Draw cutscene if active
+    if (this.inCutscene) {
+      this.drawCutscene();
+    } else if (this.levelComplete) {
+      // Draw level complete overlay (non-pausing)
+      this.drawLevelCompleteOverlay();
+    }
+    
+    // Apply red tint for boss level
+    if (this.isBossLevel && this.redTintAlpha > 0) {
+      this.ctx.fillStyle = `rgba(255, 0, 0, ${this.redTintAlpha})`;
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+    
+    // Restore screen shake transform
+    if (this.isBossLevel) {
+      this.ctx.restore();
+    }
+  }
+
+  initInput() {
+    window.addEventListener('keydown', e => {
+      if (e.code === 'KeyN' && this.levelComplete) {
+        if (this.currentLevel === 1) {
+          // After level 2, show cutscene (placeholder for existing cutscene)
+          this.showLevel3Cutscene();
+        } else {
+          this.currentLevel++;
+          this.loadLevel(this.currentLevel);
+        }
+        this.levelComplete = false;
+      }
+      if (e.code === 'KeyR' && this.gameOver) {
+        this.reset();
+      }
+      if (e.code === 'KeyP') {
+        this.paused = !this.paused;
+      }
+    });
+  }
+  
+  showLevel3Cutscene() {
+    // Start the devil cutscene
+    this.inCutscene = true;
+    this.cutsceneType = 'devil';
+    this.cutsceneTimer = 0;
+    this.dialogueIndex = 0;
+    this.playerRunning = false; // Skip running animation, go straight to dialogue
+    this.playerTargetX = 400; // Center of screen
+    this._spacePressed = false; // Reset space key state
+    
+    // Complete devil dialogue sequence
+    this.devilDialogue = [
+      "I SEE YOU HAVE MADE IT THIS FAR",
+      "YOU MUST BE QUITE STRONG",
+      "WHAT MIGHT YOUR MOTIVATION BE?",
+      "COULD YOU BE AVENGING SOMEONE?",
+      "NO, YOUR AURA IS TOO POWERFUL",
+      "I SENSE HATRED",
+      "I SENSE REVENGE",
+      "BUT MOREOVER",
+      "...",
+      "I SENSE POWER",
+      "YOU MUST BE AVENGING YOUR PEOPLE",
+      "YOU MUST HAVE LOVED THEM DEEPLY",
+      "HOWEVER",
+      "...",
+      "IN ORDER TO PASS",
+      "SACRIFICES MUST BE MADE",
+      "THE ALTAR IS WAITING",
+      "SACRIFICE ALL BUT THREE LIVES",
+      "AND I SHALL LET YOU PASS"
+    ];
+    
+    // Set up video element for canvas drawing only
+    if (!this.cutsceneVideo) {
+      this.cutsceneVideo = document.createElement('video');
+      this.cutsceneVideo.src = 'assets/ui/DoubleEdge Cutscene.mp4';
+      this.cutsceneVideo.loop = true;
+      this.cutsceneVideo.muted = true; // Muted for autoplay
+      this.cutsceneVideo.style.display = 'none'; // Hidden from DOM, only used for canvas drawing
+      document.body.appendChild(this.cutsceneVideo);
+    }
+    
+    // Start playing the video (but keep it hidden)
+    this.cutsceneVideo.currentTime = 0;
+    this.cutsceneVideo.play().catch(e => {
+      console.log('Video autoplay prevented:', e);
+    });
+    
+    console.log('Devil cutscene started with', this.devilDialogue.length, 'dialogue lines');
+  }
+  
+  endCutscene() {
+    // Clean up video
+    if (this.cutsceneVideo) {
+      this.cutsceneVideo.pause();
+      this.cutsceneVideo.currentTime = 0;
+    }
+    
+    // End cutscene state
+    this.inCutscene = false;
+    this.cutsceneType = null;
+    this.currentLevel = 2; // Set to level 3 (index 2)
+    this.loadLevel(this.currentLevel);
+    console.log('Cutscene ended, loading level 3');
+  }
+  
+  drawCutscene() {
+    if (this.cutsceneType === 'devil') {
+      // First, draw the normal background to preserve the UI frame
+      if (this.backgroundLoaded) {
+        this.ctx.drawImage(this.backgroundImage, 0, 0, this.canvas.width, this.canvas.height);
+      } else {
+        this.ctx.fillStyle = '#222';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      }
+      
+      // Define the inner game viewport area (covering entire game screen)
+      const gameViewport = {
+        x: 0,  // Start from canvas edge
+        y: 0,   // Start from canvas top
+        width: this.canvas.width,  // Full canvas width
+        height: this.canvas.height // Full canvas height
+      };
+      
+      // Draw video only in the game viewport area
+      if (this.cutsceneVideo && this.cutsceneVideo.readyState >= 2) {
+        this.ctx.drawImage(
+          this.cutsceneVideo, 
+          gameViewport.x, gameViewport.y, 
+          gameViewport.width, gameViewport.height
+        );
+      } else {
+        // Fallback dark background only in game area
+        this.ctx.fillStyle = '#000000';
+        this.ctx.fillRect(gameViewport.x, gameViewport.y, gameViewport.width, gameViewport.height);
+      }
+      
+      // Draw dialogue box (Undertale style)
+      if (this.dialogueIndex < this.devilDialogue.length) {
+        // Dialogue box background
+        this.ctx.save();
+        this.ctx.fillStyle = '#000000';
+        this.ctx.strokeStyle = '#ffffff';
+        this.ctx.lineWidth = 4;
+        
+        const boxX = 50;  // Standard margin from canvas edge
+        const boxY = this.canvas.height - 150;  // Position from bottom of canvas
+        const boxWidth = this.canvas.width - 100;  // Full canvas width minus margins
+        const boxHeight = 100;
+        
+        // Draw black box with white border
+        this.ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+        this.ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+        
+        // Inner border
+        this.ctx.strokeRect(boxX + 8, boxY + 8, boxWidth - 16, boxHeight - 16);
+        
+        // Dialogue text (centered)
+        this.setupPixelArtText(20, '#ffffff');
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        
+        const textX = boxX + boxWidth / 2; // Center horizontally
+        const textY = boxY + boxHeight / 2;
+        
+        this.ctx.fillText(this.devilDialogue[this.dialogueIndex], textX, textY);
+        
+        // Continue prompt (centered at bottom of dialogue box)
+        this.setupPixelArtText(14, '#cccccc');
+        this.ctx.textAlign = 'center';
+        
+        // Different prompt for final line
+        const isFinalLine = this.dialogueIndex === this.devilDialogue.length - 1;
+        const promptText = isFinalLine ? 'Press Q to sacrifice hearts' : 'Press SPACE to continue';
+        
+        // Make the sacrifice prompt yellow for emphasis
+        if (isFinalLine) {
+          this.setupPixelArtText(14, '#ffff00'); // Bright yellow
+        }
+        
+        this.ctx.fillText(promptText, this.canvas.width / 2, this.canvas.height - 30);
+        
+        this.ctx.restore();
+      }
+    }
+  }
+  
+  loadLevel(levelIndex) {
+    // Set up different levels
+    if (levelIndex === 0) {
+      // Level 1
+      this.player = new Player(100, 475);
+      this.platforms = [
+        new Platform(0, 550, 800, 50), // Ground
+        new Platform(200, 400, 120, 20),
+        new Platform(400, 320, 120, 20),
+        new Platform(600, 250, 120, 20)
+      ];
+      this.movingPlatforms = []; // No moving platforms in level 1
+      this.hazards = [
+        new Hazard(350, 540, 40, 10)
+      ];
+      this.enemies = [
+        new Enemy(600, 475),
+        new Enemy(300, 475)
+      ];
+      this.player.maxHearts = 5;
+      this.player.hearts = 5;
+      
+      // Disable boss level effects for level 1
+      this.isBossLevel = false;
+      this.bossLevelTimer = 0;
+    } else if (levelIndex === 1) {
+      // Level 2
+      this.player = new Player(100, 475);
+      this.platforms = [
+        new Platform(0, 550, 800, 50), // Ground
+        new Platform(150, 450, 100, 20),
+        new Platform(300, 350, 100, 20),
+        new Platform(500, 280, 100, 20),
+        new Platform(650, 200, 100, 20)
+      ];
+      this.movingPlatforms = []; // No moving platforms in level 2
+      this.hazards = [
+        new Hazard(250, 540, 40, 10),
+        new Hazard(450, 540, 60, 10)
+      ];
+      this.enemies = [
+        new Enemy(500, 475),
+        new Enemy(200, 475),
+        new Enemy(700, 475)
+      ];
+      this.player.maxHearts = 8;
+      this.player.hearts = 8;
+      
+      // Disable boss level effects for level 2
+      this.isBossLevel = false;
+      this.bossLevelTimer = 0;
+      
+      // Disable boss level effects for level 2
+      this.isBossLevel = false;
+      this.bossLevelTimer = 0;
+    } else if (levelIndex === 2) {
+      // Level 3 - Boss level with dramatic effects
+      this.player = new Player(100, 475);
+      this.platforms = [
+        new Platform(0, 550, 800, 50), // Ground only
+      ];
+      
+      // All 3 floating platforms are now moving at different speeds and directions
+      // Heights adjusted for 2-tile (64px) gaps between platforms
+      this.movingPlatforms = [
+        new MovingPlatform(150, 386, 120, 20, 0, 800, 1.2), // Bottom - Fast left-right
+        new MovingPlatform(350, 302, 120, 20, 0, 800, 0.6), // Middle - Slow left-right (64px gap above bottom)
+        new MovingPlatform(550, 218, 120, 20, 0, 800, 0.9)  // Top - Medium left-right (64px gap above middle)
+      ];
+      
+      // Set different starting directions for varied movement
+      this.movingPlatforms[0].direction = 1;  // Start moving right
+      this.movingPlatforms[1].direction = -1; // Start moving left
+      this.movingPlatforms[2].direction = 1;  // Start moving right
+      this.hazards = [];
+      this.enemies = [
+        new BossEnemy(600, 475) // Enhanced boss enemy
+      ];
+      
+      // Set hearts to 3 if coming from cutscene, otherwise keep current
+      if (this.player.hearts > 3) {
+        this.player.maxHearts = 3;
+        this.player.hearts = 3;
+      }
+      
+      // Enable boss level effects
+      this.isBossLevel = true;
+      this.bossLevelTimer = 0;
+    }
+    
+    this.ladders = []; // No ladders in basic levels
+    this.fireballs = [];
+    this.iceShards = [];
+    this.healingWaves = [];
+    this.arrows = [];
+    this.explosions = [];
+    this.asteroids = [];
+    this.lasers = [];
+    this.shockwaves = [];
+    this.levelComplete = false;
+    this.gameOver = false;
+    this.newWeaponUnlocked = null;
+    
+    // Set default weapon
+    this.player.weapon = 'sword';
+    
+    // Update UI
+    if (this.ui && this.ui.update) this.ui.update();
+    if (window.renderWeaponSelector) window.renderWeaponSelector();
+  }
+  
+  updateCutscene() {
+    if (this.cutsceneType === 'devil') {
+      this.cutsceneTimer++;
+      
+      // Skip player running, go straight to dialogue
+      if (!this.playerRunning) {
+        // Check if we're on the final dialogue line
+        const isFinalLine = this.dialogueIndex === this.devilDialogue.length - 1;
+        
+        if (isFinalLine) {
+          // Final line - require Q key to sacrifice hearts
+          if (this.input.isDown('KeyQ') && !this._qPressed) {
+            this._qPressed = true;
+            // Sacrifice hearts (reduce to 3)
+            this.player.hearts = 3;
+            this.player.maxHearts = 3;
+            this.dialogueIndex++;
+            this.cutsceneTimer = 0;
+            
+            if (this.dialogueIndex >= this.devilDialogue.length) {
+              // End cutscene, clean up video, start level 3
+              this.endCutscene();
+            }
+          }
+          
+          // Reset Q press flag when key is released
+          if (!this.input.isDown('KeyQ')) {
+            this._qPressed = false;
+          }
+        } else {
+          // Normal dialogue lines - use Space key
+          if (this.input.isDown('Space') && !this._spacePressed) {
+            this._spacePressed = true;
+            this.dialogueIndex++;
+            this.cutsceneTimer = 0;
+          }
+          
+          // Reset space press flag when key is released
+          if (!this.input.isDown('Space')) {
+            this._spacePressed = false;
+          }
+        }
+      }
+    }
+  }
+  
+  endCutscene() {
+    // Clean up video
+    if (this.cutsceneVideo) {
+      this.cutsceneVideo.pause();
+      this.cutsceneVideo.currentTime = 0;
+    }
+    
+    // End cutscene state
+    this.inCutscene = false;
+    this.cutsceneType = null;
+    this.currentLevel = 2; // Set to level 3 (index 2)
+    this.loadLevel(this.currentLevel);
+    console.log('Cutscene ended, loading level 3');
+  }
+  
+  updateHeartsDisplay() {
+    const heartsContainer = document.getElementById('hearts');
+    if (!heartsContainer || !this.player) return;
+    
+    heartsContainer.innerHTML = '';
+    
+    for (let i = 0; i < this.player.maxHearts; i++) {
+      const heart = document.createElement('div');
+      const heartColor = i < this.player.hearts ? '#ff0000' : '#444444';
+      
+      heart.style.cssText = `
+        display: inline-block;
+        position: relative;
+        width: 20px;
+        height: 18px;
+        margin: 0 2px;
+      `;
+      
+      // Create heart shape using Unicode heart symbol
+      heart.innerHTML = '♥';
+      heart.style.fontSize = '20px';
+      heart.style.color = heartColor;
+      heart.style.textAlign = 'center';
+      heart.style.lineHeight = '18px';
+      
+      heartsContainer.appendChild(heart);
+    }
   }
 }
+// --- End of Game class ---
 
-// --- Start Game ---
-window.onload = () => {
-  try {
-    window.game = new Game();
-  } catch (error) {
-    console.error('Error creating game:', error);
+// --- Main Entry Point ---
+try {
+  window.game = new Game();
+  // Automatically focus the game canvas
+  const canvas = document.getElementById('gameCanvas');
+  if (canvas) {
+    canvas.focus();
   }
-};
+} catch (error) {
+  console.error('Error creating game:', error);
+}
