@@ -10,16 +10,15 @@
   <div id="game-container">
     <canvas id="gameCanvas" width="800" height="600"></canvas>
     <div id="ui">
-  <div id="hearts"></div>
-  <div id="energybar" style="height:16px;margin-bottom:4px;"></div>
+  <div id="hearts" style="display:flex;justify-content:center;align-items:center;margin:0 auto;"></div>
   <div id="powerup"></div>
       <div id="prompt">Press E to sacrifice a heart for a power-up</div>
     </div>
   </div>
-    <button id="fullscreen-btn">Fullscreen</button>
+  <button id="fullscreen-btn" style="position:fixed;bottom:24px;right:24px;z-index:2001;">Fullscreen</button>
     <div id="cooldown-bottom"></div>
     <div id="weapon-selector" style="position:fixed;top:0;right:0;width:200px;height:auto;background:#181818e0;color:#fff;z-index:1000;padding:16px;box-shadow:-2px 0 8px #000;">
-      <button id="reset-btn" style="width:100%;margin-bottom:16px;padding:10px 0;font-size:24px;font-family:'Press Start 2P','Courier New',monospace;background:linear-gradient(90deg,#f0f,#0ff);color:#fff;border:none;border-radius:8px;box-shadow:0 2px 8px #f0f;letter-spacing:2px;cursor:pointer;transition:transform 0.1s;outline:none;image-rendering:pixelated;-webkit-font-smoothing:none;-moz-osx-font-smoothing:grayscale;">
+  <button id="reset-btn" style="width:100%;margin-bottom:16px;padding:10px 0;font-size:24px;font-family:'Press Start 2P','Courier New',monospace;background:linear-gradient(90deg,#222,#444);color:#fff;border:none;border-radius:8px;box-shadow:0 2px 16px #000, 0 0 8px #fff inset;letter-spacing:2px;cursor:pointer;transition:transform 0.1s;outline:none;image-rendering:pixelated;-webkit-font-smoothing:none;-moz-osx-font-smoothing:grayscale;">
         &#x21bb; RESET GAME
       </button>
       <h3 style="margin-top:0;font-family:'Press Start 2P','Courier New',monospace;font-size:24px;image-rendering:pixelated;-webkit-font-smoothing:none;-moz-osx-font-smoothing:grayscale;">Weapon Select</h3>
@@ -28,22 +27,52 @@
   <script type="module" src="game.js"></script>
   <script type="module">
     const weapons = [
-      { name: 'Sword', id: 'sword', description: 'Default balanced weapon. [Attack: SPACE]', cost: 0 },
-      { name: 'Scythe', id: 'scythe', description: 'More range, more damage, slower cooldown. [Attack: SPACE]', cost: 1 },
-      { name: 'Spellcaster', id: 'spellcaster', description: 'Cast spells: [Fireball: Z] [Ice: C] [Heal: R]', cost: 1 },
-      { name: 'Bow', id: 'bow', description: 'Ranged precision damage. [Hold SPACE to charge & aim]', cost: 1 }
+      { name: 'Sword', id: 'sword', description: 'Default balanced weapon. [Attack: SPACE]' },
+      { name: 'Scythe', id: 'scythe', description: 'More range, more damage, slower cooldown. [Attack: SPACE]' },
+      { name: 'Spellcaster', id: 'spellcaster', description: 'Cast spells: [Fireball: Z] [Ice: C] [Heal: R]' },
+      { name: 'Bow', id: 'bow', description: 'Ranged precision damage. [Hold SPACE to charge & aim]' }
     ];
     
     let weaponContainer = document.getElementById('weapon-container');
+    let lastWeaponSwitch = 0;
+    const WEAPON_COOLDOWN = 5000; // 5 seconds in milliseconds
     
-    function renderWeaponSelector() {
+    // Make renderWeaponSelector globally accessible
+    window.renderWeaponSelector = function renderWeaponSelector() {
       if (!window.game || !window.game.player) {
         weaponContainer.innerHTML = '<p style="font-size:18px;color:#888;font-family:\'Press Start 2P\',\'Courier New\',monospace;image-rendering:pixelated;-webkit-font-smoothing:none;">Game loading...</p>';
         return;
       }
       
       const currentWeapon = window.game.player.weapon;
+      const currentTime = Date.now();
+      const timeSinceLastSwitch = currentTime - lastWeaponSwitch;
+      const cooldownRemaining = Math.max(0, WEAPON_COOLDOWN - timeSinceLastSwitch);
+      const isOnCooldown = cooldownRemaining > 0;
+      
+      // Calculate opacity based on cooldown
+      const baseOpacity = isOnCooldown ? 0.4 : 1.0;
+      
       weaponContainer.innerHTML = '';
+      
+      // Add cooldown indicator if on cooldown
+      if (isOnCooldown) {
+        const cooldownDiv = document.createElement('div');
+        cooldownDiv.style.cssText = `
+          margin:8px 0;
+          padding:8px;
+          border-radius:6px;
+          background:#400;
+          border:2px solid #f00;
+          text-align:center;
+        `;
+        cooldownDiv.innerHTML = `
+          <span style="font-family:'Press Start 2P','Courier New',monospace;font-size:14px;color:#fff;image-rendering:pixelated;-webkit-font-smoothing:none;">
+            COOLDOWN: ${Math.ceil(cooldownRemaining / 1000)}s
+          </span>
+        `;
+        weaponContainer.appendChild(cooldownDiv);
+      }
       
       weapons.forEach((weapon, i) => {
         const isSelected = currentWeapon === weapon.id;
@@ -52,16 +81,17 @@
           margin:8px 0;
           padding:8px;
           border-radius:6px;
-          cursor:pointer;
+          cursor:${isOnCooldown ? 'not-allowed' : 'pointer'};
           border:2px solid ${isSelected ? '#f0f' : '#444'};
           background:${isSelected ? '#222' : 'transparent'};
           ${isSelected ? 'box-shadow:0 0 8px #f0f;' : ''}
+          opacity:${baseOpacity};
         `;
         
         weaponDiv.innerHTML = `
           <b style="font-family:'Press Start 2P','Courier New',monospace;font-size:20px;image-rendering:pixelated;-webkit-font-smoothing:none;-moz-osx-font-smoothing:grayscale;">${weapon.name}</b> ${isSelected ? '<span style="color:#f0f;float:right;font-family:\'Press Start 2P\',\'Courier New\',monospace;font-size:16px;image-rendering:pixelated;-webkit-font-smoothing:none;">ACTIVE</span>' : ''}<br>
           <span style="font-size:14px;color:#ccc;font-family:'Press Start 2P','Courier New',monospace;image-rendering:pixelated;-webkit-font-smoothing:none;-moz-osx-font-smoothing:grayscale;">${weapon.description}</span><br>
-          <span style="font-size:12px;color:${weapon.cost > 0 ? '#f00' : '#888'};font-family:'Press Start 2P','Courier New',monospace;image-rendering:pixelated;-webkit-font-smoothing:none;-moz-osx-font-smoothing:grayscale;">${weapon.cost > 0 ? `Cost: ${weapon.cost} heart${weapon.cost > 1 ? 's' : ''}` : 'Free'}</span>
+          <span style="font-size:12px;color:#0a0;font-family:'Press Start 2P','Courier New',monospace;image-rendering:pixelated;-webkit-font-smoothing:none;-moz-osx-font-smoothing:grayscale;">Free</span>
         `;
         
         weaponDiv.onclick = () => {
@@ -71,23 +101,24 @@
               return;
             }
             
-            // Check if player has enough hearts for the weapon cost
-            if (weapon.cost > 0) {
-              if (window.game.player.hearts < weapon.cost) {
-                // Flash red to indicate insufficient hearts
-                weaponDiv.style.background = '#400';
-                setTimeout(() => {
-                  weaponDiv.style.background = isSelected ? '#222' : 'transparent';
-                }, 200);
-                return;
-              }
-              
-              // Deduct hearts for weapon switch
-              window.game.player.hearts -= weapon.cost;
+            // Check if cooldown is active at click time (fresh calculation)
+            const clickTime = Date.now();
+            const timeSinceLastSwitch = clickTime - lastWeaponSwitch;
+            const cooldownRemaining = Math.max(0, WEAPON_COOLDOWN - timeSinceLastSwitch);
+            const isClickOnCooldown = cooldownRemaining > 0;
+            
+            if (isClickOnCooldown) {
+              // Flash red to indicate cooldown
+              weaponDiv.style.background = '#400';
+              setTimeout(() => {
+                weaponDiv.style.background = isSelected ? '#222' : 'transparent';
+              }, 200);
+              return;
             }
             
-            // Switch weapon
+            // Switch weapon and start cooldown
             window.game.player.weapon = weapon.id;
+            lastWeaponSwitch = clickTime;
             renderWeaponSelector();
           }
         };
@@ -110,13 +141,39 @@
           }
         };
       }
+      
+      // Fullscreen button logic
+      const fullscreenBtn = document.getElementById('fullscreen-btn');
+      if (fullscreenBtn) {
+        fullscreenBtn.onclick = async () => {
+          try {
+            if (!document.fullscreenElement) {
+              await document.documentElement.requestFullscreen();
+            } else {
+              await document.exitFullscreen();
+            }
+          } catch (err) {
+            console.log('Fullscreen not supported or denied:', err);
+            // Fallback: try different fullscreen methods
+            const elem = document.documentElement;
+            if (elem.webkitRequestFullscreen) {
+              elem.webkitRequestFullscreen();
+            } else if (elem.msRequestFullscreen) {
+              elem.msRequestFullscreen();
+            }
+          }
+        };
+      } else {
+        console.log('Fullscreen button not found');
+      }
+      
       renderWeaponSelector();
     });
     
-    // Update weapon selector periodically
+    // Update weapon selector more frequently to show cooldown timer
     setInterval(() => {
       renderWeaponSelector();
-    }, 500);
+    }, 100); // Update every 100ms for smooth cooldown countdown
   </script>
 </body>
 </html>
