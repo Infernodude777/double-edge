@@ -2839,15 +2839,6 @@ class Game {
     this.ctx.textBaseline = 'middle';
     this.ctx.fillText('Press N for Next Level', this.canvas.width / 2, this.canvas.height / 2 + 20);
     
-    // Weapon unlock notification (if any) - positioned above main text
-    if (this.newWeaponUnlocked) {
-      this.setupPixelArtText(18, '#ff0');
-      this.ctx.textAlign = 'center';
-      this.ctx.textBaseline = 'middle';
-      const weaponName = this.newWeaponUnlocked.charAt(0).toUpperCase() + this.newWeaponUnlocked.slice(1);
-      this.ctx.fillText(`NEW WEAPON: ${weaponName}!`, this.canvas.width / 2, this.canvas.height / 2 - 100);
-    }
-    
     this.ctx.restore();
   }
   
@@ -2898,9 +2889,7 @@ class Game {
     if (weaponToUnlock && !this.roadUnlocks.weapons.includes(weaponToUnlock)) {
       this.roadUnlocks.weapons.push(weaponToUnlock);
       this.saveUnlocks();
-      
-      // Set unlock notification for display in level complete screen
-      this.newWeaponUnlocked = weaponToUnlock;
+      // Weapon unlocked silently - no notification displayed
     }
   }
   
