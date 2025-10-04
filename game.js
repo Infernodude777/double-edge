@@ -20,6 +20,10 @@ class Input {
     window.addEventListener('keyup', e => this.keys[e.code] = false);
   }
   isDown(key) { return !!this.keys[key]; }
+  
+  clear() {
+    this.keys = {};
+  }
 }
 
 // --- Player Class ---
@@ -53,7 +57,7 @@ class Player {
     this.energy = Infinity; // Set energy to infinite for jumps
     this.maxEnergy = Infinity; // Set max energy to infinite as well
     this.powerUpCooldown = 0;
-    this.maxAmmo = 10;
+    this.maxAmmo = 5;
     this.ammo = this.maxAmmo;
     this.healingStun = 0; // For healing spell - makes player stationary
     this.spellCooldown = 0; // Cooldown for spellcaster abilities (0.5s = 30 frames)
@@ -287,6 +291,12 @@ class Player {
     this.castingTimer = 0;
     this.castingSpell = spellType;
     this.spellCooldown = 30; // 0.5 second cooldown
+    this.ammo--; // Consume ammo for spell casting
+    
+    // Update ammo display when ammo changes
+    if (game && game.updateAmmoDisplay) {
+      game.updateAmmoDisplay();
+    }
   }
   
   createArrow() {
@@ -316,7 +326,7 @@ class Player {
     }
     
     // Handle spellcaster abilities
-    if (this.weapon === 'spellcaster' && !this.isCasting && this.spellCooldown <= 0) {
+    if (this.weapon === 'spellcaster' && !this.isCasting && this.spellCooldown <= 0 && this.ammo > 0) {
       if (input.isDown('KeyZ')) { // Fireball
         console.log('Fireball key pressed, starting cast');
         this.startCasting('fireball');
@@ -332,6 +342,7 @@ class Player {
       // Debug why spells can't be cast
       if (this.isCasting) console.log('Cannot cast: already casting');
       if (this.spellCooldown > 0) console.log('Cannot cast: spell on cooldown:', this.spellCooldown);
+      if (this.ammo <= 0) console.log('Cannot cast: no ammo available');
     }
     
     // Press E to sacrifice heart for power-up
@@ -545,6 +556,10 @@ class Player {
           this.isChargingBow = false;
           this.attackCooldown = 35;
           this.ammo--;
+          // Update ammo display when ammo changes
+          if (game && game.updateAmmoDisplay) {
+            game.updateAmmoDisplay();
+          }
           playSound('attack');
         }
       }
@@ -556,6 +571,22 @@ class Player {
         this.attackAnimFrames = 30; // 0.5s at 60fps
         this.ammo--;
         this._attackHit = false;
+        
+        // Play sword swing sound with random pitch for sword weapon
+        if (this.weapon === 'sword' && window.playSwordSwingSound) {
+          window.playSwordSwingSound();
+        }
+        
+        // Play scythe swing sound for scythe weapon
+        if (this.weapon === 'scythe' && window.playScytheSwingSound) {
+          window.playScytheSwingSound();
+        }
+        
+        // Update ammo display when ammo changes
+        if (game && game.updateAmmoDisplay) {
+          game.updateAmmoDisplay();
+        }
+        
         playSound('attack');
       }
     }
@@ -582,6 +613,10 @@ class Player {
       if (this._ammoRegenTimer >= 120) { // 2s per ammo
         this.ammo++;
         this._ammoRegenTimer = 0;
+        // Update ammo display when ammo changes
+        if (game && game.updateAmmoDisplay) {
+          game.updateAmmoDisplay();
+        }
       }
     }
     // Power-up timer
@@ -1468,10 +1503,46 @@ class BossEnemy extends Enemy {
   this.width = 160;
   this.height = 160;
     this.color = '#f0f';
-    this.health = 30;
-    this.maxHealth = 30; // Add maxHealth property
+    this.health = 20;
+    this.maxHealth = 20; // Reduced health for new attack system
     this.spawnCooldown = 120; // frames
     this.attackCooldown = 0; // Add attack cooldown
+    
+    // Attack stage system with cooldown phases
+    this.attackStage = 0; // 0: cooldown, 1: asteroids, 2: jump/shockwave, 3: laser, 4: minions
+    this.stageTimer = 0;
+    this.stageDuration = 480; // 8 seconds per stage (longer intervals)
+    this.cooldownDuration = 300; // 5 seconds cooldown between phases
+    this.attackExecuted = false; // Track if current stage attack was executed
+    this.inCooldown = false; // Track if in cooldown phase
+    
+    // Movement properties
+    this.moveSpeed = 1.5;
+    this.attackRange = 60; // Range for normal attacks
+    
+    // Asteroid attack properties
+    this.asteroidCount = 0;
+    this.asteroidCooldown = 0;
+    
+    // Jump/shockwave properties
+    this.isJumping = false;
+    this.jumpStartY = y;
+    this.jumpVelocity = 0;
+    this.shockwaveActive = false;
+    this.groundSpikes = [];
+    
+    // Minion summoning properties
+    this.minionsCooldown = 0;
+    this.minionsToSummon = 0;
+    this.minionSummonDelay = 60; // 1 second between summons
+    
+    // Laser properties
+    this.laserCharging = false;
+    this.laserActive = false;
+    this.laserChargeTime = 0;
+    this.laserDuration = 0;
+    this.laserStartX = 0;
+    this.laserTargetX = 0;
     
     // Override Enemy sprites with Boss1 sprites
     this.idleImages = [new Image(), new Image(), new Image(), new Image()];
@@ -1504,6 +1575,14 @@ class BossEnemy extends Enemy {
     this.deathImages[1].src = 'assets/enemies/Boss1/Death/1.png';
     this.deathImages[2].src = 'assets/enemies/Boss1/Death/2.png';
     this.deathImages[3].src = 'assets/enemies/Boss1/Death/3.png';
+    
+    // Load asteroid sprite
+    this.asteroidSprite = new Image();
+    this.asteroidSprite.src = 'assets/enemies/Boss1/weapon sprites/asteroid.png';
+    
+    // Load spike sprite
+    this.spikeSprite = new Image();
+    this.spikeSprite.src = 'assets/enemies/Boss1/weapon sprites/spike.png';
   }
   update(player, platforms, ladders, game) {
     // If health is 0 or below, start death animation
@@ -1517,7 +1596,7 @@ class BossEnemy extends Enemy {
     // If playing death animation, only update death frames
     if (this.isPlayingDeathAnimation) {
       this.updateAnimationFrames();
-      return; // Don't do any other updates during death
+      return;
     }
     
     if (this.stunned > 0) {
@@ -1525,74 +1604,345 @@ class BossEnemy extends Enemy {
       return;
     }
     
-    // Reduce attack cooldown
-    if (this.attackCooldown > 0) {
-      this.attackCooldown--;
+    // Update stage timer and cycle through attack stages
+    this.stageTimer++;
+    
+    // Phase system: cooldown -> attack phase -> cooldown -> next attack phase
+    if (this.stageTimer >= (this.inCooldown ? this.cooldownDuration : this.stageDuration)) {
+      if (this.inCooldown) {
+        // End cooldown, start next attack phase
+        this.inCooldown = false;
+        this.attackStage = (this.attackStage % 4) + 1; // Cycle through 1, 2, 3, 4 (skip 0 which is cooldown)
+        if (this.attackStage > 4) this.attackStage = 1; // Reset to first attack after minions
+      } else {
+        // End attack phase, start cooldown
+        this.inCooldown = true;
+        this.attackStage = 0; // Cooldown phase
+      }
+      
+      this.stageTimer = 0;
+      this.attackExecuted = false;
+      
+      // Reset stage-specific properties
+      this.asteroidCount = 0;
+      this.asteroidCooldown = 0;
+      this.laserCharging = false;
+      this.laserBlinking = false;
+      this.laserActive = false;
+      this.laserChargeTime = 0;
+      this.shockwaveActive = false;
+      this.minionsToSummon = 0;
+      this.minionsCooldown = 0;
     }
     
-    let wasMoving = false;
-    let isAttacking = false;
+    // Handle movement and normal attacks during cooldown phase
+    if (this.inCooldown || this.attackStage === 0) {
+      this.handleMovementAndNormalAttacks(player, game);
+    } else {
+      // Execute current attack stage
+      switch(this.attackStage) {
+        case 1: // Asteroid attack stage
+          this.executeAsteroidAttack(player, game);
+          this.currentState = 'attacking';
+          break;
+          
+        case 2: // Jump and shockwave stage
+          this.executeJumpShockwaveAttack(player, game);
+          break;
+          
+        case 3: // Laser attack stage
+          this.executeLaserAttack(player, game);
+          this.currentState = 'attacking';
+          break;
+          
+        case 4: // Minion summoning stage
+          this.executeMinionSummon(player, game);
+          this.currentState = 'attacking';
+          break;
+      }
+    }
     
-    // Check if boss is close enough to attack player
-    let distanceToPlayer = Math.sqrt(Math.pow(player.x - this.x, 2) + Math.pow(player.y - this.y, 2));
-    
-    if (distanceToPlayer < 90) { // Increased attack range from 60 to 90
-      isAttacking = true;
-      // Attack player - more forgiving collision detection with cooldown
-      if ((this.collides(player) || distanceToPlayer < 70) && this.attackCooldown <= 0) {
-        player.takeDamage(1);
-        this.attackCooldown = 60; // 1 second cooldown at 60fps
+    // Handle gravity and ground collision for jumping stage
+    if (this.attackStage === 1) {
+      this.vy += 0.5;
+      this.y += this.vy;
+      
+      // Ground collision
+      this.onGround = false;
+      if (this.y + this.height >= 550) {
+        this.y = 550 - this.height;
+        this.vy = 0;
+        this.onGround = true;
+        
+        // Create shockwave when landing
+        if (this.isJumping && this.onGround) {
+          this.createShockwaveAndSpikes(game);
+          this.isJumping = false;
+        }
       }
     } else {
-      // Boss moves slower but is bigger and tracks facing direction
-      if (player.x < this.x) {
-        this.x -= 1;
-        this.facing = 'left';
-        wasMoving = true;
-      } else if (player.x > this.x) {
-        this.x += 1;
-        this.facing = 'right';
-        wasMoving = true;
-      }
-    }
-    
-    // Determine current animation state
-    if (isAttacking) {
-      this.currentState = 'attacking';
-    } else if (!this.onGround) {
-      this.currentState = 'jumping';
-    } else if (wasMoving) {
-      this.currentState = 'running';
-    } else {
-      this.currentState = 'idle';
-    }
-
-    // Update animation frames based on current state
-    this.updateAnimationFrames();
-    
-    // Gravity
-    this.vy += 0.5;
-    this.y += this.vy;
-    
-    // Ground collision - land on the light gray platform
-    this.onGround = false;
-    if (this.y + this.height > 550) { // Ground platform is at y=550
+      // Normal ground positioning for other stages
       this.y = 550 - this.height;
-      this.vy = 0;
       this.onGround = true;
     }
     
-    // Spawn weak enemies
-    if (this.spawnCooldown > 0) {
-      this.spawnCooldown--;
-    } else {
-      if (game && Math.random() < 0.5) { // 50% chance every cooldown
-        let spawnX = this.x + randInt(-40, 120);
-        let spawnY = 600 - 32; // Spawn on ground level
-        game.enemies.push(new Enemy(spawnX, spawnY));
+    // Update animation frames
+    this.updateAnimationFrames();
+    
+    // Update ground spikes timer
+    this.updateGroundSpikes(game);
+  }
+  
+  handleMovementAndNormalAttacks(player, game) {
+    // Move toward player
+    const dx = player.x - this.x;
+    const dy = player.y - this.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // Move toward player if not too close
+    if (distance > this.attackRange) {
+      if (dx > 0) {
+        this.x += this.moveSpeed;
+        this.facing = 'right';
+        this.currentState = 'running';
+      } else if (dx < 0) {
+        this.x -= this.moveSpeed;
+        this.facing = 'left';
+        this.currentState = 'running';
       }
-      this.spawnCooldown = randInt(90, 180); // 1.5-3s
+    } else {
+      // Close enough for normal attacks
+      this.currentState = 'idle';
+      
+      // Perform normal attack occasionally
+      if (this.stageTimer % 120 === 0) { // Attack every 2 seconds during cooldown
+        this.currentState = 'attacking';
+        // Deal damage if player is in range
+        if (distance <= this.attackRange) {
+          player.takeDamage(1);
+        }
+      }
     }
+    
+    // Keep boss on screen
+    if (this.x < 0) this.x = 0;
+    if (this.x + this.width > 800) this.x = 800 - this.width;
+  }
+  
+  executeMinionSummon(player, game) {
+    if (!this.attackExecuted) {
+      // Determine number of minions (1-3)
+      this.minionsToSummon = Math.floor(Math.random() * 3) + 1;
+      this.attackExecuted = true;
+      this.minionsCooldown = 60; // Delay before first summon
+    }
+    
+    // Summon minions with delays
+    if (this.minionsToSummon > 0 && this.minionsCooldown <= 0) {
+      this.summonMinion(game);
+      this.minionsToSummon--;
+      this.minionsCooldown = this.minionSummonDelay; // Delay between summons
+    }
+    
+    if (this.minionsCooldown > 0) {
+      this.minionsCooldown--;
+    }
+  }
+  
+  summonMinion(game) {
+    if (!game) return;
+    
+    // Spawn minion at random position near boss
+    const minionX = this.x + (Math.random() - 0.5) * 200; // Within 200 pixels of boss
+    const clampedX = Math.max(50, Math.min(750, minionX)); // Keep on screen
+    
+    const minion = new Enemy(clampedX, 475);
+    game.enemies.push(minion);
+  }
+  
+  executeAsteroidAttack(player, game) {
+    if (!this.attackExecuted) {
+      // Determine number of asteroids (3-6)
+      this.asteroidCount = Math.floor(Math.random() * 4) + 3;
+      this.attackExecuted = true;
+      this.asteroidCooldown = 30; // Delay between asteroids
+    }
+    
+    // Spawn asteroids with delays
+    if (this.asteroidCount > 0 && this.asteroidCooldown <= 0) {
+      this.spawnAsteroid(player, game);
+      this.asteroidCount--;
+      this.asteroidCooldown = 20; // 0.33 second delay between asteroids
+    }
+    
+    if (this.asteroidCooldown > 0) {
+      this.asteroidCooldown--;
+    }
+  }
+  
+  executeJumpShockwaveAttack(player, game) {
+    if (!this.attackExecuted) {
+      // Start jump
+      this.isJumping = true;
+      this.vy = -15; // Jump velocity
+      this.attackExecuted = true;
+      this.currentState = 'jumping';
+    }
+  }
+  
+  executeLaserAttack(player, game) {
+    if (!this.attackExecuted) {
+      // Start laser blinking
+      this.laserBlinking = true;
+      this.laserBlinkTime = 0;
+      this.laserBlinkCount = 0;
+      this.laserVisible = true;
+      this.laserStartX = this.x + this.width / 2;
+      this.laserStartY = this.y + this.height / 2;
+      // Capture target position when attack starts
+      this.laserTargetX = player.x + player.width / 2;
+      this.laserTargetY = player.y + player.height / 2;
+      this.attackExecuted = true;
+    }
+    
+    if (this.laserBlinking) {
+      this.laserBlinkTime++;
+      
+      // Blink every 20 frames (0.33 seconds)
+      if (this.laserBlinkTime >= 20) {
+        this.laserBlinkTime = 0;
+        this.laserVisible = !this.laserVisible;
+        this.laserBlinkCount++;
+        
+        // After 2 blinks (4 visibility changes), fire laser
+        if (this.laserBlinkCount >= 4) {
+          this.laserBlinking = false;
+          this.laserActive = true;
+          this.laserDuration = 90; // 1.5 seconds
+          this.fireLaser(player, game);
+        }
+      }
+    }
+    
+    if (this.laserActive) {
+      this.laserDuration--;
+      if (this.laserDuration <= 0) {
+        this.laserActive = false;
+      }
+    }
+  }
+  
+  spawnAsteroid(player, game) {
+    if (!game) return;
+    
+    // Spawn asteroid at random X position at top of screen
+    const asteroidX = Math.random() * 800;
+    const asteroidY = -50;
+    
+    // Calculate direction towards player (not homing, just initial direction)
+    const directionX = (player.x - asteroidX) * 0.02; // Slow horizontal movement
+    const directionY = 2 + Math.random() * 3; // Varied downward speed (2-5)
+    
+    // Create asteroid projectile with sprite and bouncing (2x bigger)
+    const asteroid = {
+      x: asteroidX,
+      y: asteroidY,
+      width: 60, // 2x bigger
+      height: 60, // 2x bigger
+      vx: directionX,
+      vy: directionY,
+      color: '#8B4513',
+      type: 'asteroid',
+      sprite: this.asteroidSprite,
+      facingLeft: directionX < 0, // Mirror sprite if moving left
+      damage: 2 // 2 hearts damage
+    };
+    
+    if (!game.projectiles) game.projectiles = [];
+    game.projectiles.push(asteroid);
+  }
+  
+  createShockwaveAndSpikes(game) {
+    if (!game) return;
+    
+    this.shockwaveActive = true;
+    
+    // Initialize sequential spike system
+    this.groundSpikes = [];
+    this.spikeSequence = {
+      active: true,
+      currentX: this.x + this.width, // Start right in front of boss
+      direction: this.x < 400 ? 1 : -1, // Go right if boss is on left, left if on right
+      timer: 0,
+      spikeDelay: 10 // Frames between spike spawns
+    };
+  }
+  
+  updateGroundSpikes(game) {
+    // Handle sequential spike spawning
+    if (this.spikeSequence && this.spikeSequence.active) {
+      this.spikeSequence.timer++;
+      
+      // Spawn new spike every spikeDelay frames
+      if (this.spikeSequence.timer >= this.spikeSequence.spikeDelay) {
+        this.spikeSequence.timer = 0;
+        
+        // Check if we hit a wall or edge
+        if (this.spikeSequence.currentX >= 0 && this.spikeSequence.currentX <= 800) {
+          // Create new spike
+          this.groundSpikes.push({
+            x: this.spikeSequence.currentX,
+            y: 530, // Just above ground
+            width: 30,
+            height: 20,
+            timer: 60, // 1 second at 60fps
+            color: '#666'
+          });
+          
+          // Move to next position
+          this.spikeSequence.currentX += this.spikeSequence.direction * 40;
+        } else {
+          // Hit wall, stop spawning
+          this.spikeSequence.active = false;
+        }
+      }
+    }
+    
+    // Update existing spikes (don't remove on hit, just timer)
+    this.groundSpikes = this.groundSpikes.filter(spike => {
+      spike.timer--;
+      return spike.timer > 0;
+    });
+  }
+  
+  fireLaser(player, game) {
+    if (!game) return;
+    
+    // Calculate laser direction from boss to target
+    const dx = this.laserTargetX - this.laserStartX;
+    const dy = this.laserTargetY - this.laserStartY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // Normalize direction
+    const dirX = dx / distance;
+    const dirY = dy / distance;
+    
+    // Create laser beam extending from boss towards target
+    const laser = {
+      x: this.laserStartX,
+      y: this.laserStartY,
+      width: 15,
+      height: distance,
+      color: '#FF0000',
+      type: 'laser',
+      damage: 2,
+      angle: Math.atan2(dy, dx), // Store angle for proper rendering
+      dirX: dirX,
+      dirY: dirY
+    };
+    
+    if (!game.projectiles) game.projectiles = [];
+    game.projectiles.push(laser);
   }
 }
 
@@ -1603,8 +1953,8 @@ class SuperBoss extends BossEnemy {
   this.width = 120;
   this.height = 120;
     this.color = '#8A2BE2'; // Blue violet
-    this.health = 50;
-    this.maxHealth = 50;
+    this.health = 38;
+    this.maxHealth = 38;
     
     // Attack patterns and timers
     this.asteroidCooldown = 0;
@@ -2203,8 +2553,14 @@ class HealingWave {
     this.radius += 3; // Expand outward
     this.lifetime--;
     
-    // Only heal player if they cast the healing wave (don't auto-heal)
-    // Healing wave now only affects enemies, not the player automatically
+    // Heal the player when they cast the healing spell
+    if (!this.hasHealed && this.distanceTo(player) <= this.radius) {
+      if (player.hearts < player.maxHearts) {
+        player.hearts = Math.min(player.hearts + this.healAmount, player.maxHearts);
+        console.log(`Player healed! Hearts: ${player.hearts}/${player.maxHearts}`);
+        this.hasHealed = true;
+      }
+    }
   }
   
   distanceTo(obj) {
@@ -2488,7 +2844,10 @@ class Game {
     this.cutsceneVideo = null;
     this._spacePressed = false; // Track space key state for cutscenes
     this._qPressed = false; // Track Q key state for heart sacrifice
-    this._qPressed = false; // Track Q key state for heart sacrifice
+    
+    // Devil cutscene sound system
+    this.devilSoundTimer = 0;
+    this.nextDevilSoundTime = 0;
     
     // Game entities arrays
     this.platforms = [];
@@ -2535,6 +2894,7 @@ class Game {
     this.ui = {
       update: () => {
         this.updateHeartsDisplay();
+        this.updateAmmoDisplay();
       }
     };
     
@@ -2550,6 +2910,68 @@ class Game {
     // Start the game loop
     this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
+  }
+
+  createAsteroidExplosion(x, y) {
+    // Create explosion effect
+    const explosion = new Explosion(x, y, 80); // Radius 80 for good area damage
+    this.explosions.push(explosion);
+    
+    // Damage all nearby entities (enemies and player)
+    const explosionRadius = 80;
+    
+    // Check player damage
+    const playerCenterX = this.player.x + this.player.width / 2;
+    const playerCenterY = this.player.y + this.player.height / 2;
+    const playerDistance = Math.sqrt((playerCenterX - x) ** 2 + (playerCenterY - y) ** 2);
+    
+    if (playerDistance <= explosionRadius) {
+      this.player.takeDamage(2); // 2 hearts damage from explosion
+    }
+    
+    // Check enemy damage (exclude Boss1 from explosion damage)
+    for (let enemy of this.enemies) {
+      if (enemy.isDead()) continue;
+      
+      // Skip Boss1 - they should be immune to their own asteroid explosions
+      if (enemy instanceof BossEnemy) continue;
+      
+      const enemyCenterX = enemy.x + enemy.width / 2;
+      const enemyCenterY = enemy.y + enemy.height / 2;
+      const enemyDistance = Math.sqrt((enemyCenterX - x) ** 2 + (enemyCenterY - y) ** 2);
+      
+      if (enemyDistance <= explosionRadius) {
+        enemy.takeDamage(3); // Higher damage to enemies
+      }
+    }
+  }
+
+  // Line-rectangle intersection for laser collision detection
+  lineIntersectsRect(x1, y1, x2, y2, rectLeft, rectTop, rectRight, rectBottom) {
+    // Check if either endpoint is inside the rectangle
+    if ((x1 >= rectLeft && x1 <= rectRight && y1 >= rectTop && y1 <= rectBottom) ||
+        (x2 >= rectLeft && x2 <= rectRight && y2 >= rectTop && y2 <= rectBottom)) {
+      return true;
+    }
+    
+    // Check intersection with each side of the rectangle
+    return (
+      this.lineIntersectsLine(x1, y1, x2, y2, rectLeft, rectTop, rectRight, rectTop) ||     // Top
+      this.lineIntersectsLine(x1, y1, x2, y2, rectRight, rectTop, rectRight, rectBottom) || // Right
+      this.lineIntersectsLine(x1, y1, x2, y2, rectRight, rectBottom, rectLeft, rectBottom) || // Bottom
+      this.lineIntersectsLine(x1, y1, x2, y2, rectLeft, rectBottom, rectLeft, rectTop)      // Left
+    );
+  }
+
+  // Line-line intersection helper
+  lineIntersectsLine(x1, y1, x2, y2, x3, y3, x4, y4) {
+    const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (denom === 0) return false; // Lines are parallel
+    
+    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+    const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+    
+    return (t >= 0 && t <= 1) && (u >= 0 && u <= 1);
   }
 
   update() {
@@ -2653,12 +3075,22 @@ class Game {
       this.player.dashHitEnemies.clear();
     }
 
-    // Remove dead enemies and handle heart gain
+    // Remove dead enemies and handle heart gain + ammo regeneration
     let prevCount = this.enemies.length;
     this.enemies = this.enemies.filter(e => !e.isDead());
     let killed = prevCount - this.enemies.length;
     if (killed > 0) {
       this.enemiesKilled += killed;
+      
+      // Regenerate 1 ammo per enemy killed
+      this.player.ammo = Math.min(this.player.ammo + killed, this.player.maxAmmo);
+      
+      // Update ammo display when ammo changes
+      if (this.updateAmmoDisplay) {
+        this.updateAmmoDisplay();
+      }
+      
+      // Heart gain logic (every 5 kills)
       let heartsToAdd = Math.floor(this.enemiesKilled / 5);
       if (heartsToAdd > 0 && this.player.hearts < this.player.maxHearts) {
         this.player.hearts = Math.min(this.player.hearts + heartsToAdd, this.player.maxHearts);
@@ -2702,6 +3134,135 @@ class Game {
       explosion.update();
       return !explosion.isDone();
     });
+    
+    // Handle new boss projectiles (asteroids, lasers, ground spikes)
+    if (!this.projectiles) this.projectiles = [];
+    this.projectiles = this.projectiles.filter(projectile => {
+      // Update projectile movement
+      if (projectile.type === 'asteroid') {
+        projectile.x += projectile.vx;
+        projectile.y += projectile.vy;
+        
+        // Bounce off left and right borders
+        if (projectile.x <= 0 || projectile.x + projectile.width >= 800) {
+          projectile.vx = -projectile.vx; // Reverse horizontal direction
+          projectile.facingLeft = !projectile.facingLeft; // Flip sprite direction
+          
+          // Keep asteroid within bounds
+          if (projectile.x <= 0) projectile.x = 0;
+          if (projectile.x + projectile.width >= 800) projectile.x = 800 - projectile.width;
+        }
+        
+        // Check collision with Boss1 - bounce off instead of damaging
+        for (let enemy of this.enemies) {
+          if (enemy instanceof BossEnemy &&
+              projectile.x < enemy.x + enemy.width &&
+              projectile.x + projectile.width > enemy.x &&
+              projectile.y < enemy.y + enemy.height &&
+              projectile.y + projectile.height > enemy.y) {
+            // Calculate bounce direction away from boss
+            const bossCenterX = enemy.x + enemy.width / 2;
+            const bossCenterY = enemy.y + enemy.height / 2;
+            const asteroidCenterX = projectile.x + projectile.width / 2;
+            const asteroidCenterY = projectile.y + projectile.height / 2;
+            
+            // Calculate direction from boss to asteroid
+            const dx = asteroidCenterX - bossCenterX;
+            const dy = asteroidCenterY - bossCenterY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > 0) {
+              // Normalize and apply bounce
+              const normalizedDx = dx / distance;
+              const normalizedDy = dy / distance;
+              
+              // Set new velocity away from boss
+              projectile.vx = normalizedDx * 4; // Bounce speed
+              projectile.vy = normalizedDy * 3; // Bounce speed
+              
+              // Update facing direction
+              projectile.facingLeft = projectile.vx < 0;
+              
+              // Push asteroid away from boss to prevent sticking
+              projectile.x = bossCenterX + normalizedDx * (enemy.width/2 + projectile.width/2 + 5);
+              projectile.y = bossCenterY + normalizedDy * (enemy.height/2 + projectile.height/2 + 5);
+            }
+            break; // Only check first boss collision
+          }
+        }
+        
+        // Check collision with player
+        if (projectile.x < this.player.x + this.player.width &&
+            projectile.x + projectile.width > this.player.x &&
+            projectile.y < this.player.y + this.player.height &&
+            projectile.y + projectile.height > this.player.y) {
+          this.player.takeDamage(projectile.damage || 2);
+          this.createAsteroidExplosion(projectile.x + projectile.width/2, projectile.y + projectile.height/2);
+          return false; // Remove asteroid after hit
+        }
+        
+        // Check if asteroid hits ground
+        if (projectile.y + projectile.height >= 550) {
+          this.createAsteroidExplosion(projectile.x + projectile.width/2, 550);
+          return false; // Remove asteroid after hitting ground
+        }
+        
+        // Remove if off screen
+        return projectile.y < 650;
+      }
+      
+      if (projectile.type === 'laser') {
+        // For rotated laser, use line-segment collision detection
+        const laserStartX = projectile.x;
+        const laserStartY = projectile.y;
+        const laserEndX = projectile.x + projectile.dirX * projectile.height;
+        const laserEndY = projectile.y + projectile.dirY * projectile.height;
+        
+        // Check if laser line intersects with player rectangle
+        const playerLeft = this.player.x;
+        const playerRight = this.player.x + this.player.width;
+        const playerTop = this.player.y;
+        const playerBottom = this.player.y + this.player.height;
+        
+        // Check if laser line intersects player bounding box
+        if (this.lineIntersectsRect(laserStartX, laserStartY, laserEndX, laserEndY, 
+                                   playerLeft, playerTop, playerRight, playerBottom)) {
+          this.player.takeDamage(projectile.damage || 2);
+          return false; // Remove laser after hit
+        }
+        return true; // Laser persists (will be removed by boss logic)
+      }
+      
+      return true;
+    });
+    
+    // Handle ground spikes collision
+    this.enemies.forEach(enemy => {
+      if (enemy instanceof BossEnemy && enemy.groundSpikes) {
+        enemy.groundSpikes.forEach(spike => {
+          if (spike.timer > 0 && // Only active spikes
+              spike.x < this.player.x + this.player.width &&
+              spike.x + spike.width > this.player.x &&
+              spike.y < this.player.y + this.player.height &&
+              spike.y + spike.height > this.player.y) {
+            this.player.takeDamage(1);
+            // Don't remove spike, let it persist for full duration
+          }
+          
+          // Check spike collision with other enemies
+          this.enemies.forEach(otherEnemy => {
+            if (otherEnemy !== enemy && spike.timer > 0 &&
+                spike.x < otherEnemy.x + otherEnemy.width &&
+                spike.x + spike.width > otherEnemy.x &&
+                spike.y < otherEnemy.y + otherEnemy.height &&
+                spike.y + spike.height > otherEnemy.y) {
+              otherEnemy.takeDamage(1);
+            }
+          });
+        });
+      }
+    });
+    
     this.asteroids = this.asteroids.filter(asteroid => {
       asteroid.update(this.platforms);
       if (asteroid.collides(this.player)) {
@@ -2895,6 +3456,24 @@ class Game {
   
   reset() {
     this.currentLevel = 0;
+    
+    // Clear all projectiles and boss states before loading level
+    this.projectiles = [];
+    this.fireballs = [];
+    this.iceShards = [];
+    this.healingWaves = [];
+    this.arrows = [];
+    this.explosions = [];
+    this.asteroids = [];
+    this.lasers = [];
+    this.shockwaves = [];
+    
+    // Reset player weapon and ammo to defaults before loading level
+    if (this.player) {
+      this.player.weapon = 'sword'; // Reset to default weapon
+      this.player.ammo = 5; // Reset to default ammo
+    }
+    
     this.loadLevel(this.currentLevel);
     this.levelComplete = false;
     this.gameOver = false;
@@ -2904,6 +3483,38 @@ class Game {
     this.screenShakeY = 0;
     this.redTintAlpha = 0;
     this.lastFrameTime = 0;
+    
+    // Clear cutscene state
+    this.inCutscene = false;
+    this.cutsceneType = null;
+    this.cutsceneTimer = 0;
+    this.dialogueIndex = 0;
+    this.devilSoundTimer = 0;
+    this.nextDevilSoundTime = 0;
+    
+    // Clean up cutscene video
+    if (this.cutsceneVideo) {
+      this.cutsceneVideo.pause();
+      this.cutsceneVideo.currentTime = 0;
+      if (this.cutsceneVideo.parentNode) {
+        this.cutsceneVideo.parentNode.removeChild(this.cutsceneVideo);
+      }
+      this.cutsceneVideo = null;
+    }
+    
+    // Hide skip cutscene button
+    const skipBtn = document.getElementById('skip-cutscene-btn');
+    if (skipBtn) {
+      skipBtn.style.display = 'none';
+    }
+    
+    // Clear input states to prevent interference
+    if (this.input) {
+      this.input.clear();
+    }
+    this._spacePressed = false;
+    this._qPressed = false;
+    
     requestAnimationFrame(this.loop);
   }
 
@@ -2957,6 +3568,26 @@ class Game {
     for (let ladder of this.ladders) ladder.draw(this.ctx);
     if (this.player) this.player.draw(this.ctx);
     for (let enemy of this.enemies) enemy.draw(this.ctx);
+    
+    // Draw laser blinking effect for boss enemies
+    this.enemies.forEach(enemy => {
+      if (enemy instanceof BossEnemy && enemy.laserBlinking && enemy.laserVisible) {
+        // Draw blinking laser preview line
+        this.ctx.save();
+        this.ctx.strokeStyle = '#FF0000';
+        this.ctx.lineWidth = 3;
+        this.ctx.setLineDash([5, 5]); // Dashed line for preview
+        this.ctx.globalAlpha = 0.7;
+        
+        // Draw line from boss to target position
+        this.ctx.beginPath();
+        this.ctx.moveTo(enemy.laserStartX, enemy.laserStartY);
+        this.ctx.lineTo(enemy.laserTargetX, enemy.laserTargetY);
+        this.ctx.stroke();
+        
+        this.ctx.restore();
+      }
+    });
     for (let fireball of this.fireballs) fireball.draw(this.ctx);
     for (let iceShard of this.iceShards) iceShard.draw(this.ctx);
     for (let healingWave of this.healingWaves) healingWave.draw(this.ctx);
@@ -2965,6 +3596,93 @@ class Game {
     for (let asteroid of this.asteroids) asteroid.draw(this.ctx);
     for (let laser of this.lasers) laser.draw(this.ctx);
     for (let shockwave of this.shockwaves) shockwave.draw(this.ctx);
+    
+    // Draw new boss projectiles
+    if (this.projectiles) {
+      for (let projectile of this.projectiles) {
+        if (projectile.type === 'asteroid' && projectile.sprite && projectile.sprite.complete) {
+          // Draw asteroid sprite with mirroring
+          this.ctx.save();
+          
+          if (projectile.facingLeft) {
+            // Mirror the sprite for left-facing asteroids
+            this.ctx.scale(-1, 1);
+            this.ctx.drawImage(
+              projectile.sprite, 
+              -(projectile.x + projectile.width), 
+              projectile.y, 
+              projectile.width, 
+              projectile.height
+            );
+          } else {
+            // Draw normally for right-facing asteroids
+            this.ctx.drawImage(
+              projectile.sprite, 
+              projectile.x, 
+              projectile.y, 
+              projectile.width, 
+              projectile.height
+            );
+          }
+          
+          this.ctx.restore();
+        } else {
+          // Fallback to colored rectangle if sprite not loaded
+          this.ctx.fillStyle = projectile.color;
+          this.ctx.fillRect(projectile.x, projectile.y, projectile.width, projectile.height);
+        }
+        
+        // Add visual effects for different projectile types
+        if (projectile.type === 'laser') {
+          this.ctx.save();
+          
+          // Translate to laser start position
+          this.ctx.translate(projectile.x, projectile.y);
+          
+          // Rotate based on laser angle
+          this.ctx.rotate(projectile.angle);
+          
+          // Draw laser beam from origin
+          this.ctx.shadowColor = '#FF0000';
+          this.ctx.shadowBlur = 10;
+          this.ctx.fillStyle = '#FF0000';
+          this.ctx.fillRect(0, -projectile.width/2, projectile.height, projectile.width);
+          
+          // Add inner glow
+          this.ctx.fillStyle = '#FFAAAA';
+          this.ctx.fillRect(2, -projectile.width/2 + 2, projectile.height - 4, projectile.width - 4);
+          
+          this.ctx.shadowBlur = 0;
+          this.ctx.restore();
+        }
+      }
+    }
+    
+    // Draw ground spikes from boss
+    this.enemies.forEach(enemy => {
+      if (enemy instanceof BossEnemy && enemy.groundSpikes) {
+        enemy.groundSpikes.forEach(spike => {
+          if (enemy.spikeSprite && enemy.spikeSprite.complete) {
+            // Draw spike sprite
+            this.ctx.drawImage(
+              enemy.spikeSprite,
+              spike.x,
+              spike.y,
+              spike.width,
+              spike.height
+            );
+          } else {
+            // Fallback to colored rectangle if sprite not loaded
+            this.ctx.fillStyle = spike.color;
+            this.ctx.fillRect(spike.x, spike.y, spike.width, spike.height);
+            // Add danger outline
+            this.ctx.strokeStyle = '#FF0000';
+            this.ctx.lineWidth = 2;
+            this.ctx.strokeRect(spike.x, spike.y, spike.width, spike.height);
+          }
+        });
+      }
+    });
     
     // Draw cutscene if active
     if (this.inCutscene) {
@@ -3016,6 +3734,10 @@ class Game {
     this.cutsceneType = 'devil';
     this.cutsceneTimer = 0;
     this.dialogueIndex = 0;
+    
+    // Initialize devil sound system
+    this.devilSoundTimer = 0;
+    this.nextDevilSoundTime = Math.floor(Math.random() * 180) + 180; // 3-6 seconds (180-360 frames at 60fps)
     
     // Show skip cutscene button
     const skipBtn = document.getElementById('skip-cutscene-btn');
@@ -3168,9 +3890,10 @@ class Game {
   }
   
   loadLevel(levelIndex) {
-    // Preserve current weapon and health before level transition
+    // Preserve current weapon, health, and ammo before level transition
     const currentWeapon = this.player ? this.player.weapon : 'sword';
     const currentHearts = this.player ? this.player.hearts : 5;
+    const currentAmmo = this.player ? this.player.ammo : 5; // Preserve current ammo
     
     // Set up different levels
     if (levelIndex === 0) {
@@ -3256,9 +3979,9 @@ class Game {
         new BossEnemy(600, 475) // Enhanced boss enemy
       ];
       
-      // Set hearts to 3 if coming from cutscene, otherwise preserve current hearts
-      this.player.maxHearts = 3;
-      this.player.hearts = Math.min(currentHearts, 3); // Don't exceed max hearts for boss level
+      // Set hearts to 5 for level 3 boss fight
+      this.player.maxHearts = 5;
+      this.player.hearts = Math.min(currentHearts + 2, 5); // Add 2 hearts or cap at 5
       
       // Enable boss level effects
       this.isBossLevel = true;
@@ -3274,12 +3997,36 @@ class Game {
     this.asteroids = [];
     this.lasers = [];
     this.shockwaves = [];
+    
+    // Clear boss projectiles and attack states
+    this.projectiles = [];
+    
+    // Reset boss attack states for all enemies
+    if (this.enemies) {
+      this.enemies.forEach(enemy => {
+        if (enemy instanceof BossEnemy) {
+          // Clear boss attack states
+          enemy.groundSpikes = [];
+          enemy.laserActive = false;
+          enemy.laserBlinking = false;
+          enemy.attackExecuted = false;
+          enemy.spikeSequence = null;
+          enemy.inCooldown = false;
+          enemy.attackStage = 0;
+          enemy.stageTimer = 0;
+          enemy.minionsToSummon = 0;
+          enemy.minionsCooldown = 0;
+        }
+      });
+    }
+    
     this.levelComplete = false;
     this.gameOver = false;
     this.newWeaponUnlocked = null;
     
-    // Preserve weapon across level transitions
+    // Preserve weapon and ammo across level transitions
     this.player.weapon = currentWeapon;
+    this.player.ammo = currentAmmo; // Restore preserved ammo
     
     // Update UI
     if (this.ui && this.ui.update) this.ui.update();
@@ -3289,6 +4036,19 @@ class Game {
   updateCutscene() {
     if (this.cutsceneType === 'devil') {
       this.cutsceneTimer++;
+      
+      // Handle random devil sounds every 3-6 seconds
+      this.devilSoundTimer++;
+      if (this.devilSoundTimer >= this.nextDevilSoundTime) {
+        // Play random devil sound
+        if (window.playRandomDevilSound) {
+          window.playRandomDevilSound();
+        }
+        
+        // Reset timer and set next random interval (3-6 seconds)
+        this.devilSoundTimer = 0;
+        this.nextDevilSoundTime = Math.floor(Math.random() * 180) + 180; // 180-360 frames = 3-6 seconds at 60fps
+      }
       
       // Skip player running, go straight to dialogue
       if (!this.playerRunning) {
@@ -3377,6 +4137,51 @@ class Game {
       heart.style.lineHeight = '18px';
       
       heartsContainer.appendChild(heart);
+    }
+  }
+  
+  updateAmmoDisplay() {
+    const ammoContainer = document.getElementById('ammo-bar');
+    if (!ammoContainer || !this.player) return;
+    
+    ammoContainer.innerHTML = '';
+    
+    // Create ammo label
+    const label = document.createElement('div');
+    label.innerHTML = 'AMMO: ';
+    label.style.cssText = `
+      color: #fff;
+      font-family: 'Press Start 2P', 'Courier New', monospace;
+      font-size: 12px;
+      margin-right: 8px;
+      line-height: 20px;
+      image-rendering: pixelated;
+      -webkit-font-smoothing: none;
+      -moz-osx-font-smoothing: grayscale;
+      font-smooth: never;
+      text-rendering: geometricPrecision;
+      font-synthesis: none;
+      font-kerning: none;
+      font-variant-ligatures: none;
+    `;
+    ammoContainer.appendChild(label);
+    
+    // Create ammo bullets
+    for (let i = 0; i < this.player.maxAmmo; i++) {
+      const bullet = document.createElement('div');
+      const bulletColor = i < this.player.ammo ? '#ffff00' : '#444444';
+      
+      bullet.style.cssText = `
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        margin: 0 1px;
+        background: ${bulletColor};
+        border: 1px solid #333;
+        border-radius: 2px;
+      `;
+      
+      ammoContainer.appendChild(bullet);
     }
   }
 }
