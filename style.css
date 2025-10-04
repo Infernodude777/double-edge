@@ -14,6 +14,21 @@ body {
   font-feature-settings: "liga" 0;
   font-variant-ligatures: none;
 }
+
+/* Make EVERYTHING more pixelated */
+* {
+  image-rendering: pixelated !important;
+  image-rendering: -moz-crisp-edges !important;
+  image-rendering: crisp-edges !important;
+  image-rendering: -webkit-crisp-edges !important;
+  text-rendering: geometricPrecision !important;
+  -webkit-font-smoothing: none !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  font-smooth: never !important;
+  font-synthesis: none !important;
+  font-kerning: none !important;
+  font-variant-ligatures: none !important;
+}
 /* Ensure all buttons, inputs, and text elements use pixel art font */
 button, input, textarea, select, h1, h2, h3, h4, h5, h6, p, div, span {
   font-family: 'Press Start 2P', 'Courier New', 'Monaco', 'Consolas', monospace;
@@ -27,6 +42,12 @@ button, input, textarea, select, h1, h2, h3, h4, h5, h6, p, div, span {
   font-smooth: never;
   -webkit-text-stroke: 0;
   text-shadow: none !important;
+  font-synthesis: none;
+  font-kerning: none;
+  font-variant-ligatures: none;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000;
 }
 body::after {
   content: '';
