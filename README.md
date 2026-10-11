@@ -2,6 +2,8 @@
 # double-edge
 You wield a powerful weapon, but one with a curse.
 
+**Author:** [Your Name](https://github.com/yourusername)
+
 
 drive with assets: https://drive.google.com/drive/u/0/folders/1YMLV6G7XJ7KIdSnDQlyZLjeIhtAzWpdi
 
